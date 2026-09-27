@@ -4,7 +4,7 @@ import { SUITS, shuffle } from '../game/cards.js';
 import { toViewSeat, viewFor } from '../game/views.js';
 import { BOT_NAMES } from '../config.js';
 import { Emitter } from '../net/Emitter.js';
-import { EMOTES, PROTOCOL_VERSION, REJOIN_GRACE_MS } from '../net/protocol.js';
+import { EMOTES, NAME_MAX, PROTOCOL_VERSION, REJOIN_GRACE_MS, sanitizeName } from '../net/protocol.js';
 
 export class Aborted extends Error {}
 
@@ -34,7 +34,7 @@ export class TableHost extends Emitter {
     this.rng = rng;
     this.pause = pause;
     this.graceMs = graceMs;
-    this.seats = [{ kind: 'local', name: hostName, connected: true }];
+    this.seats = [{ kind: 'local', name: sanitizeName(hostName) || 'Host', connected: true }];
     this.started = false;
     this.aborted = false;
     this.autoplay = false; // dev/testing: bots decide for the local player too
@@ -115,7 +115,6 @@ export class TableHost extends Emitter {
       this.net.send(connId, { type: 'rejected', reason: 'version' });
       return;
     }
-    const name = String(msg.name ?? 'Guest').slice(0, 24);
     const returning = this.seats.find((s) => s.kind === 'remote' && s.clientId === msg.clientId);
     if (returning) {
       returning.connId = connId;
@@ -140,9 +139,20 @@ export class TableHost extends Emitter {
       this.net.send(connId, { type: 'rejected', reason: 'full' });
       return;
     }
+    const name = this.#uniqueName(sanitizeName(msg.name) || 'Guest');
     this.seats.push({ kind: 'remote', name, clientId: String(msg.clientId), connId, connected: true });
     this.settings.numPlayers = Math.max(this.settings.numPlayers, this.seats.length);
     this.#lobbyChanged();
+  }
+
+  /** Two players with the same name get numbered: "Amber Owl", "Amber Owl 2". */
+  #uniqueName(name) {
+    const taken = new Set(this.seats.map((s) => s.name));
+    if (!taken.has(name)) return name;
+    for (let k = 2; ; k++) {
+      const candidate = `${name.slice(0, NAME_MAX - 2).trim()} ${k}`;
+      if (!taken.has(candidate)) return candidate;
+    }
   }
 
   #onDisconnect(connId) {

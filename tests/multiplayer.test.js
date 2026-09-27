@@ -5,7 +5,7 @@ import { TableView, toGameSeat, toViewSeat, viewFor } from '../src/game/views.js
 import { LoopbackHub } from '../src/net/LoopbackNet.js';
 import { ClientSession } from '../src/session/ClientSession.js';
 import { TableHost } from '../src/session/TableHost.js';
-import { normalizeCode, isValidCode, makeRoomCode } from '../src/net/protocol.js';
+import { NAME_MAX, normalizeCode, isValidCode, makeRoomCode, sanitizeName } from '../src/net/protocol.js';
 
 const noPause = () => Promise.resolve();
 const settle = () => new Promise((r) => setTimeout(r, 0));
@@ -122,6 +122,37 @@ describe('room codes', () => {
     expect(isValidCode(code)).toBe(true);
     expect(normalizeCode(' ab-cd ')).toBe('ABCD');
     expect(normalizeCode('o0i1')).toBe(''); // ambiguous characters are never used
+  });
+});
+
+describe('player names', () => {
+  it('are cleaned up: allowed characters only, tidy spaces, length capped', () => {
+    expect(sanitizeName('  Jake   the  Great ')).toBe('Jake the Great');
+    expect(sanitizeName('Zoë O’Brien')).toBe('Zoë OBrien'); // curly apostrophe isn't allowed; straight ' is
+    expect(sanitizeName("D'Artagnan-2.0")).toBe("D'Artagnan-2.0");
+    expect(sanitizeName('<script>alert(1)</script>')).toBe('scriptalert1scri'); // stripped, then capped at 16
+    expect(sanitizeName('🔥Fire🔥 Mage\n\t')).toBe('Fire Mage');
+    expect(sanitizeName('A'.repeat(40))).toHaveLength(NAME_MAX);
+    expect(sanitizeName('   ')).toBe('');
+    expect(sanitizeName(null)).toBe('');
+  });
+
+  it('the host cleans names from guests, falls back to "Guest", and numbers duplicates', async () => {
+    const hub = new LoopbackHub();
+    const host = new TableHost({ presenter: new HeadlessPresenter(), net: hub.createHost(), hostName: 'Merlin', settings: { numPlayers: 3 }, pause: noPause });
+    await host.openRoom('NAME');
+    const join = async (clientId, name) => {
+      const s = new ClientSession({ createNet: () => hub.createClient(), presenter: new HeadlessPresenter(), clientId, name });
+      await s.join('NAME');
+    };
+    await join('a', 'Merlin'); // same as the host
+    await join('b', 'Merlin');
+    await join('c', '\u0000💣'); // nothing usable left
+    await join('d', 'X'.repeat(50));
+    await settle();
+    expect(host.seats.map((s) => s.name)).toEqual(['Merlin', 'Merlin 2', 'Merlin 3', 'Guest', 'X'.repeat(NAME_MAX)]);
+    // Bots never borrow a player's name.
+    await host.start().catch(() => {});
   });
 });
 

@@ -60,7 +60,10 @@ Empty seats are filled by bots when you press **Start game**. Up to 6 players ca
 - **Rejoin:** if a guest's connection drops (or they reload), the game waits 15 seconds for them,
   then a bot plays their turns until they're back. Rejoining with the same code, or just reloading,
   returns their seat and hand.
-- **Names:** everyone gets a random friendly name (Amber Owl, Cosmic Lynx…), rerollable from the home screen.
+- **Names:** everyone starts with a random friendly name (Amber Owl, Cosmic Lynx…). **Change name** on the
+  home screen opens an on-screen keyboard (point and click in VR, or just type on desktop) with a
+  "Random name" button. Names are up to 16 letters, digits, spaces and `' . _ -`. The host re-checks
+  every name it receives and numbers duplicates ("Amber Owl 2").
 
 ### How it works
 

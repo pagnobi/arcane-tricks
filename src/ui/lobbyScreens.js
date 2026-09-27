@@ -51,7 +51,7 @@ export function drawRules(ctx, p, s, { x, y, w, humans = 1, onChange }) {
   });
 }
 
-export function drawHome(ctx, p, { name, onPick, onReroll, onOptions, optionsOpen }) {
+export function drawHome(ctx, p, { name, onPick, onRename, onOptions, optionsOpen }) {
   const W = p.pxWidth;
   const H = p.pxHeight;
   drawPanelBackground(ctx, W, H);
@@ -60,7 +60,7 @@ export function drawHome(ctx, p, { name, onPick, onReroll, onOptions, optionsOpe
 
   text(ctx, 'Playing as', 60, 178, { font: `21px ${FONTS.sans}`, align: 'left', fill: THEME.muted });
   text(ctx, name, 60, 212, { font: `bold 32px ${FONTS.serif}`, align: 'left', fill: THEME.text, maxWidth: 420 });
-  p.button('reroll', { x: W - 210, y: 172, w: 160, h: 48 }, 'New name', { size: 21, onClick: onReroll });
+  p.button('rename', { x: W - 230, y: 172, w: 180, h: 48 }, 'Change name', { size: 21, onClick: onRename });
 
   const bx = W / 2 - 220;
   p.button('solo', { x: bx, y: 256, w: 440, h: 64 }, 'Play vs bots', { primary: true, size: 28, onClick: () => onPick('solo') });
@@ -156,6 +156,61 @@ export function drawKeypad(ctx, p, { code, error, onKey, onBack, onJoin, onCance
   p.button('cancel', { x: x0, y: by, w: 150, h: 58 }, 'Cancel', { size: 22, onClick: onCancel });
   p.button('back', { x: x0 + 166, y: by, w: 110, h: 58 }, '⌫', { size: 28, disabled: !code.length, onClick: onBack });
   p.button('join', { x: W - x0 - 250, y: by, w: 250, h: 58 }, 'Join', { primary: true, size: 28, disabled: code.length < CODE_LENGTH, onClick: onJoin });
+}
+
+const NAME_ROWS = ['1234567890', 'QWERTYUIOP', 'ASDFGHJKL', "ZXCVBNM'-."];
+
+/**
+ * On-screen keyboard for your display name — pointable in VR, clickable on desktop
+ * (where you can also just type). `shift` capitalises the next letter.
+ */
+export function drawNameEditor(ctx, p, { name, max, shift, onKey, onShift, onSpace, onBack, onRandom, onCancel, onSave }) {
+  const W = p.pxWidth;
+  const H = p.pxHeight;
+  drawPanelBackground(ctx, W, H);
+  text(ctx, 'Your name', W / 2, 48, { font: `bold 38px ${FONTS.serif}`, fill: THEME.gold });
+
+  // The text field
+  roundRect(ctx, 44, 82, W - 88, 84, 14);
+  ctx.fillStyle = THEME.button;
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = THEME.gold;
+  ctx.stroke();
+  ctx.font = `bold 44px ${FONTS.sans}`;
+  const caretX = Math.min(70 + ctx.measureText(name).width + 4, W - 150);
+  text(ctx, name, 70, 126, { font: `bold 44px ${FONTS.sans}`, align: 'left', maxWidth: W - 230 });
+  ctx.fillStyle = THEME.gold;
+  ctx.fillRect(caretX, 102, 4, 46);
+  text(ctx, `${name.length}/${max}`, W - 64, 126, { font: `20px ${FONTS.sans}`, align: 'right', fill: THEME.muted });
+  text(ctx, 'Shown to other players at online tables', W / 2, 192, { font: `19px ${FONTS.sans}`, fill: THEME.muted });
+
+  const full = name.length >= max;
+  const keyW = 80;
+  const gap = 8;
+  NAME_ROWS.forEach((row, r) => {
+    const x0 = (W - (row.length * (keyW + gap) - gap)) / 2;
+    [...row].forEach((ch, i) => {
+      const letter = /[A-Z]/.test(ch);
+      const label = letter && !shift ? ch.toLowerCase() : ch;
+      p.button(`key-${r}-${i}`, { x: x0 + i * (keyW + gap), y: 218 + r * 68, w: keyW, h: 60 }, label, {
+        size: 28,
+        disabled: full,
+        onClick: () => onKey(label),
+      });
+    });
+  });
+
+  const by = 218 + 4 * 68;
+  const bx = (W - (140 + 8 + 440 + 8 + 140)) / 2;
+  p.button('shift', { x: bx, y: by, w: 140, h: 60 }, '⇧ Shift', { size: 22, selected: shift, onClick: onShift });
+  p.button('space', { x: bx + 148, y: by, w: 440, h: 60 }, 'Space', { size: 22, disabled: full || !name || name.endsWith(' '), onClick: onSpace });
+  p.button('back', { x: bx + 596, y: by, w: 140, h: 60 }, '⌫', { size: 28, disabled: !name, onClick: onBack });
+
+  const ay = H - 84;
+  p.button('random', { x: 44, y: ay, w: 220, h: 58 }, 'Random name', { size: 22, onClick: onRandom });
+  p.button('cancel', { x: W - 44 - 260 - 16 - 170, y: ay, w: 170, h: 58 }, 'Cancel', { size: 22, onClick: onCancel });
+  p.button('save', { x: W - 44 - 260, y: ay, w: 260, h: 58 }, 'Save', { primary: true, size: 26, disabled: !name.trim(), onClick: onSave });
 }
 
 export function drawGuestLobby(ctx, p, { lobby, onLeave }) {

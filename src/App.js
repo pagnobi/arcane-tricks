@@ -4,7 +4,7 @@ import { Presenter } from './session/Presenter.js';
 import { PoseSync } from './session/PoseSync.js';
 import { Aborted, TableHost } from './session/TableHost.js';
 import { PeerClient, PeerHost } from './net/PeerNet.js';
-import { isValidCode, normalizeCode, randomId } from './net/protocol.js';
+import { isValidCode, normalizeCode, randomId, randomName } from './net/protocol.js';
 
 const CLIENT_ID_KEY = 'arcane-tricks:clientId';
 
@@ -56,13 +56,13 @@ const REJECTED = {
  * Top-level flow: home menu → solo game, hosting a table, or joining one → back to the menu.
  */
 export class App {
-  constructor({ world, cards, avatars, hud, sound, getName, rerollName }) {
+  constructor({ world, cards, avatars, hud, sound, getName, setName }) {
     this.world = world;
     this.cards = cards;
     this.avatars = avatars;
     this.hud = hud;
     this.getName = getName;
-    this.rerollName = rerollName;
+    this.setName = setName;
     this.presenter = new Presenter({ cards, avatars, hud, sound });
     this.poseSync = new PoseSync(world);
     this.clientId = loadClientId();
@@ -78,7 +78,12 @@ export class App {
       let choice = 'join';
       if (!isValidCode(joinCode)) {
         joinCode = null;
-        choice = await this.hud.showHome({ getName: this.getName, onReroll: this.rerollName });
+        choice = await this.hud.showHome({ getName: this.getName });
+      }
+      if (choice === 'name') {
+        const name = await this.hud.askName({ initial: this.getName(), randomName });
+        if (name) this.setName(name);
+        continue;
       }
       try {
         if (choice === 'solo') await this.#solo();

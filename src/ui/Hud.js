@@ -5,8 +5,8 @@ import { drawSuitGlyph } from '../scene/cardTextures.js';
 import { SUITS, SUIT_INFO } from '../game/cards.js';
 import { EYE } from '../scene/layout.js';
 import { DEFAULT_PREFS, GAME_TAGLINE } from '../config.js';
-import { CODE_LENGTH, EMOTES, normalizeCode } from '../net/protocol.js';
-import { drawGuestLobby, drawHome, drawHostLobby, drawKeypad, drawMessage, drawRules } from './lobbyScreens.js';
+import { CODE_LENGTH, EMOTES, NAME_CHAR, NAME_MAX, normalizeCode, sanitizeName } from '../net/protocol.js';
+import { drawGuestLobby, drawHome, drawHostLobby, drawKeypad, drawMessage, drawNameEditor, drawRules } from './lobbyScreens.js';
 
 // Modal prompts float in front of you; the status board sits low-left of your hand
 // (a glance down in VR) and the score pad to the right when opened.
@@ -56,7 +56,8 @@ export class Hud {
     this.flash = null;
     this.roomCode = null;
     window.addEventListener('keydown', (e) => {
-      if (e.key === 'm' || e.key === 'M') this.#setPref('sound', !this.prefs.sound);
+      // While typing a name or room code, every key is text — M must not toggle sound.
+      if (!this.textInput && (e.key === 'm' || e.key === 'M')) this.#setPref('sound', !this.prefs.sound);
       else this.keyHandler?.(e);
     });
     world.onUpdate(() => this.#layoutHud());
@@ -129,7 +130,8 @@ export class Hud {
 
   // ---------- modal plumbing ----------
 
-  #openModal({ width, height, draw, keys, ppm = 1000 }) {
+  #openModal({ width, height, draw, keys, ppm = 1000, textInput = false }) {
+    this.textInput = textInput;
     this.modalDraw = draw;
     this.modal.setSize(width, height, ppm);
     this.modal.hoverId = null;
@@ -139,6 +141,7 @@ export class Hud {
   }
 
   #closeModal() {
+    this.textInput = false;
     this.modal.mesh.visible = false;
     this.modalDraw = null;
     this.keyHandler = null;
@@ -423,8 +426,8 @@ export class Hud {
 
   // ---------- menus & lobby ----------
 
-  /** Home screen. Resolves 'solo' | 'host' | 'join'. */
-  showHome({ getName, onReroll }) {
+  /** Home screen. Resolves 'solo' | 'host' | 'join' | 'name'. */
+  showHome({ getName }) {
     return this.#prompt((done) => {
       this.#openModal({
         width: 0.72,
@@ -433,10 +436,7 @@ export class Hud {
           drawHome(ctx, p, {
             name: getName(),
             onPick: done,
-            onReroll: () => {
-              onReroll();
-              p.render();
-            },
+            onRename: () => done('name'),
             onOptions: () => this.toggleOptions(),
             optionsOpen: this.options.mesh.visible,
           }),
@@ -513,6 +513,7 @@ export class Hud {
       this.#openModal({
         width: 0.62,
         height: 0.56,
+        textInput: true,
         draw: (ctx, p) =>
           drawKeypad(ctx, p, {
             code,
@@ -536,6 +537,75 @@ export class Hud {
           else if (e.key.length === 1) code = normalizeCode(code + e.key);
           else return;
           error = null;
+          this.modal.render();
+        },
+      });
+    });
+  }
+
+  /**
+   * Edit your display name with the on-screen keyboard (or a real one).
+   * Resolves the cleaned-up name, or null if cancelled.
+   */
+  askName({ initial, randomName }) {
+    let name = sanitizeName(initial);
+    let shift = !name; // capitalise the first letter
+    return this.#prompt((done) => {
+      const add = (ch) => {
+        if (name.length >= NAME_MAX || !NAME_CHAR.test(ch)) return;
+        if (ch === ' ' && (!name || name.endsWith(' '))) return; // no leading or double spaces
+        name += ch;
+        shift = ch === ' '; // capitalise the start of each word
+      };
+      const save = () => {
+        const clean = sanitizeName(name);
+        if (clean) done(clean);
+      };
+      this.#openModal({
+        width: 0.8,
+        height: 0.55,
+        ppm: 1200,
+        textInput: true,
+        draw: (ctx, p) =>
+          drawNameEditor(ctx, p, {
+            name,
+            max: NAME_MAX,
+            shift,
+            onKey: (ch) => {
+              add(ch);
+              p.render();
+            },
+            onShift: () => {
+              shift = !shift;
+              p.render();
+            },
+            onSpace: () => {
+              add(' ');
+              p.render();
+            },
+            onBack: () => {
+              name = name.slice(0, -1);
+              shift = !name || name.endsWith(' ');
+              p.render();
+            },
+            onRandom: () => {
+              name = randomName();
+              shift = false;
+              p.render();
+            },
+            onCancel: () => done(null),
+            onSave: save,
+          }),
+        keys: (e) => {
+          if (e.key === 'Enter') save();
+          else if (e.key === 'Escape') done(null);
+          else if (e.key === 'Backspace') {
+            name = name.slice(0, -1);
+            shift = !name || name.endsWith(' ');
+          } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
+            add(e.key); // a real keyboard already gives the right case
+          } else return;
+          e.preventDefault();
           this.modal.render();
         },
       });

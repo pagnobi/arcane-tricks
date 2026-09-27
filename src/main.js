@@ -8,7 +8,7 @@ import { Hud } from './ui/Hud.js';
 import { Panel } from './ui/Panel.js';
 import { App } from './App.js';
 import { loadPrefs, savePrefs } from './config.js';
-import { randomName } from './net/protocol.js';
+import { randomName, sanitizeName } from './net/protocol.js';
 
 const world = new World(document.getElementById('app'));
 const tweens = new Tweens();
@@ -28,6 +28,7 @@ function applyPrefs(prefs) {
   if (prefs.vrPosture !== world.posture) world.setPosture(prefs.vrPosture);
 }
 hud.prefs = loadPrefs();
+hud.prefs.name = sanitizeName(hud.prefs.name);
 if (!hud.prefs.name) {
   hud.prefs.name = randomName();
   savePrefs(hud.prefs);
@@ -47,8 +48,8 @@ const app = new App({
   hud,
   sound,
   getName: () => hud.prefs.name,
-  rerollName: () => {
-    hud.prefs = { ...hud.prefs, name: randomName() };
+  setName: (name) => {
+    hud.prefs = { ...hud.prefs, name };
     savePrefs(hud.prefs);
   },
 });

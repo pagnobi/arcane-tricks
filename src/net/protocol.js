@@ -48,7 +48,26 @@ export function isValidCode(code) {
 const ADJECTIVES = ['Amber', 'Silver', 'Misty', 'Clever', 'Brave', 'Quiet', 'Lucky', 'Cosmic', 'Velvet', 'Rusty', 'Golden', 'Wandering', 'Sleepy', 'Merry'];
 const NOUNS = ['Owl', 'Fox', 'Raven', 'Toad', 'Comet', 'Moth', 'Badger', 'Heron', 'Lynx', 'Otter', 'Wisp', 'Newt', 'Sprite', 'Pike'];
 
-/** Friendly random player names — no typing needed in VR, nothing to moderate. */
+export const NAME_MAX = 16;
+/** A single character allowed in names. */
+export const NAME_CHAR = /^[\p{L}\p{N} '._-]$/u;
+
+/**
+ * Clean up a player-chosen name: letters (any language), digits, spaces and ' . _ - only;
+ * no emoji or control characters; whitespace collapsed; at most NAME_MAX characters.
+ * The host applies this to every name it receives, so a modified client can't sneak anything in.
+ */
+export function sanitizeName(text) {
+  return String(text ?? '')
+    .normalize('NFC')
+    .replace(/[^\p{L}\p{N} '._-]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, NAME_MAX)
+    .trim();
+}
+
+/** Friendly random player names — the default, and one tap away in the name editor. */
 export function randomName(rng = Math.random) {
   return `${ADJECTIVES[Math.floor(rng() * ADJECTIVES.length)]} ${NOUNS[Math.floor(rng() * NOUNS.length)]}`;
 }
