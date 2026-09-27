@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0d1a" />
+    <meta name="description" content="A trick-taking card game of wizards and jesters, playable in VR and in the browser." />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+    <title>Arcane Tricks</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #0b0d1a;
+        font-family: system-ui, 'Segoe UI', sans-serif;
+      }
+      /* three.js positions this button itself; keep it in a corner, clear of your hand */
+      #VRButton {
+        left: auto !important;
+        right: 16px !important;
+        bottom: 16px !important;
+      }
+      #hint {
+        position: fixed;
+        left: 16px;
+        top: 14px;
+        color: #c9c3ae;
+        font-size: 13px;
+        opacity: 0.75;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="hint">Click cards and buttons · Point at table cards to inspect · Scroll to zoom · Right-drag to look around</div>
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

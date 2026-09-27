@@ -1,0 +1,23 @@
+{
+  "name": "arcane-tricks-vr",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A WebXR trick-taking card game in the style of Wizard, playable in VR headsets and desktop browsers.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:headset": "vite --host --mode https",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "peerjs": "^1.5.5",
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-basic-ssl": "^2.3.0",
+    "vite": "^8.3.1",
+    "vitest": "^5.0.2"
+  }
+}
