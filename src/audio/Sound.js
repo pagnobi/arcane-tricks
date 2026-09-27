@@ -134,6 +134,14 @@ export class Sound {
     window.addEventListener('keydown', unlock);
     world.renderer.xr.addEventListener('sessionstart', unlock);
     world.onUpdate(() => this.#updateListener());
+    // Go quiet while the tab isn't showing (another tab, minimised) — but never during VR.
+    document.addEventListener('visibilitychange', () => this.#applyLevels());
+    world.renderer.xr.addEventListener('sessionstart', () => this.#applyLevels());
+    world.renderer.xr.addEventListener('sessionend', () => this.#applyLevels());
+  }
+
+  get #backgrounded() {
+    return document.hidden && !this.world.isXR;
   }
 
   #ensure() {
@@ -167,7 +175,7 @@ export class Sound {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
     // Short ramps so dragging a slider doesn't crackle.
-    this.master.gain.setTargetAtTime(this.enabled ? 1 : 0, t, 0.03);
+    this.master.gain.setTargetAtTime(this.enabled && !this.#backgrounded ? 1 : 0, t, 0.03);
     this.sfxBus.gain.setTargetAtTime(SFX_LEVEL * this.sfxVolume ** 2, t, 0.03); // squared ≈ perceptual loudness
     this.musicBus.gain.setTargetAtTime(MUSIC_LEVEL * this.musicVolume ** 2, t, 0.03);
   }
