@@ -1,0 +1,12 @@
+Copyright (c) 2026 pagnobi. All rights reserved.
+
+This software, including its source code, generated artwork, music and the name
+"Arcane Tricks", is proprietary. No permission is granted to use, copy, modify,
+merge, publish, distribute, sublicense or sell any part of it, in whole or in part,
+without prior written permission from the copyright holder.
+
+The source code is publicly visible for reference only. Viewing it does not grant
+any license.
+
+Third-party libraries included in builds (three.js, PeerJS) remain under their own
+licenses; see their notices in node_modules.

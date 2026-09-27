@@ -146,6 +146,11 @@ so they also run in Node (that's how the tests play full online games).
   Meta's PWA tooling (`ovr-platform-util create-pwa`) wraps a hosted URL into an APK you can submit.
   Before doing that, add PNG icons (512×512 and 192×192) next to `icon.svg` and list them in the manifest.
 
+## License
+
+Copyright (c) 2026 pagnobi. **All rights reserved.** The source is visible for reference only.
+No permission is granted to use, copy, modify or distribute it. See [LICENSE](LICENSE).
+
 ## Roadmap ideas
 
 - Self-hosted PeerJS broker + TURN relay for reliability, or a dedicated server for public matchmaking

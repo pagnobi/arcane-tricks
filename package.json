@@ -1,6 +1,7 @@
 {
   "name": "arcane-tricks-vr",
   "private": true,
+  "license": "UNLICENSED",
   "version": "0.1.0",
   "description": "A WebXR trick-taking card game in the style of Wizard, playable in VR headsets and desktop browsers.",
   "type": "module",
