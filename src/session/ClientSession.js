@@ -1,5 +1,5 @@
 import { Emitter } from '../net/Emitter.js';
-import { PROTOCOL_VERSION } from '../net/protocol.js';
+import { PROTOCOL_VERSION, REPLY_TIMEOUT_MS } from '../net/protocol.js';
 
 const RECONNECT_EVERY_MS = 3000;
 const RECONNECT_FOR_MS = 90000;
@@ -12,10 +12,12 @@ const RECONNECT_FOR_MS = 90000;
  * Emits: lobby(info) · started · rejected(reason) · closed · reconnecting · reconnected · lost · ended
  */
 export class ClientSession extends Emitter {
-  constructor({ createNet, presenter, clientId, name, reconnectEveryMs = RECONNECT_EVERY_MS }) {
+  constructor({ createNet, presenter, clientId, name, reconnectEveryMs = RECONNECT_EVERY_MS, replyTimeoutMs = REPLY_TIMEOUT_MS }) {
     super();
     this.createNet = createNet;
     this.reconnectEveryMs = reconnectEveryMs;
+    this.replyTimeoutMs = replyTimeoutMs;
+    this.firstReply = null;
     this.presenter = presenter;
     this.clientId = clientId;
     this.name = name;
@@ -26,14 +28,35 @@ export class ClientSession extends Emitter {
     this.finished = false; // game over — the host going away now is expected
   }
 
-  async join(code) {
+  /**
+   * Join a table. `onStage` reports progress: 'broker' → 'host' → 'hello'. Rejects with a
+   * connection error (see PeerClient.connect) or 'no-reply' if the host never answers.
+   */
+  async join(code, onStage = () => {}) {
     this.code = code;
-    await this.#connect();
+    const replied = new Promise((resolve, reject) => {
+      this.firstReply = resolve;
+      this.replyTimer = setTimeout(() => reject(new Error('no-reply')), this.replyTimeoutMs);
+    });
+    replied.catch(() => {}); // handled below; avoid an unhandled rejection if connecting fails first
+    try {
+      await this.#connect(onStage);
+    } catch (err) {
+      clearTimeout(this.replyTimer);
+      throw err;
+    }
+    onStage('hello');
+    await replied;
   }
 
-  async #connect() {
+  async #connect(onStage) {
     const net = this.createNet();
-    await net.connect(this.code);
+    await net.connect(this.code, onStage);
+    if (this.closed) {
+      // Cancelled while we were still connecting — don't turn up at the table after all.
+      net.close();
+      throw new Error('cancelled');
+    }
     this.net = net;
     net.on('message', (msg) => this.#onMessage(msg));
     net.on('disconnect', () => this.#onLost(net));
@@ -42,6 +65,11 @@ export class ClientSession extends Emitter {
 
   #onMessage(msg) {
     if (!msg || typeof msg !== 'object' || this.closed) return;
+    if (this.firstReply) {
+      clearTimeout(this.replyTimer);
+      this.firstReply();
+      this.firstReply = null;
+    }
     switch (msg.type) {
       case 'lobby':
         this.emit('lobby', msg);

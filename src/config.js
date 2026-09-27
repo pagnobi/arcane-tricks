@@ -66,3 +66,20 @@ export function savePrefs(prefs) {
     // non-essential
   }
 }
+
+/**
+ * Change some preferences, merging into what's *currently stored* — so a second tab with an
+ * older copy of the preferences can't overwrite settings it didn't touch. Returns the result.
+ */
+export function updatePrefs(patch) {
+  const next = { ...loadPrefs(), ...patch };
+  savePrefs(next);
+  return next;
+}
+
+/** Call `fn(prefs)` when another tab changes the preferences. */
+export function onPrefsChangedElsewhere(fn) {
+  window.addEventListener('storage', (e) => {
+    if (e.key === PREFS_KEY) fn(loadPrefs());
+  });
+}

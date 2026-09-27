@@ -4,7 +4,7 @@ import { SUITS, shuffle } from '../game/cards.js';
 import { toViewSeat, viewFor } from '../game/views.js';
 import { BOT_NAMES } from '../config.js';
 import { Emitter } from '../net/Emitter.js';
-import { EMOTES, NAME_MAX, PROTOCOL_VERSION, REJOIN_GRACE_MS, sanitizeName } from '../net/protocol.js';
+import { EMOTES, HOST_GAME_TIMEOUT_MS, NAME_MAX, PROTOCOL_VERSION, REJOIN_GRACE_MS, sanitizeName } from '../net/protocol.js';
 
 export class Aborted extends Error {}
 
@@ -181,6 +181,8 @@ export class TableHost extends Emitter {
     while (this.seats.length < n) this.seats.push({ kind: 'bot', name: botNames.pop() ?? `Bot ${this.seats.length}`, connected: true });
 
     this.started = true;
+    // Lobby tolerates long silences (people off sharing the code); mid-game, notice drops sooner.
+    if (this.net && 'idleTimeoutMs' in this.net) this.net.idleTimeoutMs = HOST_GAME_TIMEOUT_MS;
     this.game = new Game({
       players: this.seats.map((s) => ({ name: s.name })),
       variants: {

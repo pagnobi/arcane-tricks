@@ -7,7 +7,7 @@ import { Sound } from './audio/Sound.js';
 import { Hud } from './ui/Hud.js';
 import { Panel } from './ui/Panel.js';
 import { App } from './App.js';
-import { loadPrefs, savePrefs } from './config.js';
+import { loadPrefs, onPrefsChangedElsewhere, updatePrefs } from './config.js';
 import { randomName, sanitizeName } from './net/protocol.js';
 
 const world = new World(document.getElementById('app'));
@@ -28,16 +28,18 @@ function applyPrefs(prefs) {
   if (prefs.vrPosture !== world.posture) world.setPosture(prefs.vrPosture);
 }
 hud.prefs = loadPrefs();
-hud.prefs.name = sanitizeName(hud.prefs.name);
-if (!hud.prefs.name) {
-  hud.prefs.name = randomName();
-  savePrefs(hud.prefs);
-}
+if (!sanitizeName(hud.prefs.name)) hud.prefs = updatePrefs({ name: randomName() });
 applyPrefs(hud.prefs);
-hud.onPrefsChange = (prefs) => {
-  applyPrefs(prefs);
-  savePrefs(prefs);
+hud.onPrefsChange = (patch) => {
+  hud.prefs = updatePrefs(patch);
+  applyPrefs(hud.prefs);
 };
+// Keep several open tabs in step instead of letting them overwrite each other.
+onPrefsChangedElsewhere((prefs) => {
+  hud.prefs = prefs;
+  applyPrefs(prefs);
+  hud.refreshPrefs();
+});
 hud.onFitHeight = () => world.fitHeight();
 world.onHeightFitted = (offset) => hud.showHeightFitted(offset);
 
@@ -49,8 +51,7 @@ const app = new App({
   sound,
   getName: () => hud.prefs.name,
   setName: (name) => {
-    hud.prefs = { ...hud.prefs, name };
-    savePrefs(hud.prefs);
+    hud.prefs = updatePrefs({ name });
   },
 });
 app.run();

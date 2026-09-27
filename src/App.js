@@ -36,13 +36,42 @@ function setRoomInUrl(code) {
 function explainError(err, code) {
   switch (err?.message) {
     case 'not-found':
-      return `No table found with code ${code}. Check the code, and that the host still has the table open.`;
+      return `No table found with code ${code}. Check the code, and that the host still has the table open (and hasn’t started the game yet).`;
     case 'offline':
       return 'Couldn’t reach the matchmaking service. Check your internet connection and try again.';
-    case 'timeout':
-      return 'The host didn’t answer. Some networks (school, office, strict firewalls) block direct connections between players.';
+    case 'no-direct-connection':
+      return 'Found the table, but couldn’t connect to the host. One of your networks is probably blocking direct connections (common on school, work and some mobile networks). Try a different network, like a phone hotspot or home Wi-Fi.';
+    case 'no-reply':
+      return 'Connected, but the host’s game didn’t answer. Ask the host to check their table is still open, then try again.';
     default:
       return `Connection problem (${err?.message ?? 'unknown'}). Please try again.`;
+  }
+}
+
+const JOIN_STAGES = {
+  broker: 'Step 1 of 3: reaching the matchmaking service…',
+  host: 'Step 2 of 3: connecting to the host…',
+  hello: 'Step 3 of 3: waiting for the host’s table…',
+};
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // Older browsers / no permission: fall back to a hidden text box.
+    try {
+      const box = document.createElement('textarea');
+      box.value = text;
+      box.style.cssText = 'position:fixed;opacity:0;pointer-events:none';
+      document.body.appendChild(box);
+      box.select();
+      const ok = document.execCommand('copy');
+      box.remove();
+      return ok;
+    } catch {
+      return false;
+    }
   }
 }
 
@@ -83,7 +112,7 @@ export class App {
       if (choice === 'name') {
         const name = await this.hud.askName({ initial: this.getName(), randomName });
         if (name) this.setName(name);
-        continue;
+        continue; // back to the home screen
       }
       try {
         if (choice === 'solo') await this.#solo();
@@ -138,7 +167,7 @@ export class App {
     }
     const link = `${location.origin}${location.pathname}?room=${host.code}`;
     const stopListening = host.on('lobby', (lobby) => this.hud.updateLobby(lobby));
-    const choice = await this.hud.openHostLobby(host.lobbyInfo(0), { link, onChange: (s) => host.updateSettings(s) });
+    const choice = await this.hud.openHostLobby(host.lobbyInfo(0), { link, onChange: (s) => host.updateSettings(s), copyText });
     stopListening();
     if (choice !== 'start') {
       host.abort();
@@ -159,25 +188,41 @@ export class App {
 
   async #join(initialCode) {
     let code = initialCode;
+    let lastCode = '';
     let error = null;
     for (;;) {
-      if (!code) code = await this.hud.askRoomCode({ error });
+      if (!code) code = await this.hud.askRoomCode({ initial: error ? lastCode : '', error });
       if (!code) return;
-      this.hud.showBusy(`Joining table ${code}…`, 'Connecting to the host');
       const session = new ClientSession({ createNet: () => new PeerClient(), presenter: this.presenter, clientId: this.clientId, name: this.getName() });
       this.presenter.reset('guest');
       const outcome = this.#guestOutcome(session);
+      // Show which step we're on, with a way out if it's taking too long.
+      let cancel;
+      const cancelled = new Promise((resolve) => (cancel = resolve));
+      const showStage = (stage) =>
+        this.hud.showBusy(`Joining table ${code}…`, JOIN_STAGES[stage] ?? '', { button: 'Cancel', onButton: () => cancel('cancelled') });
+      showStage('broker');
+      let failure = null;
       try {
-        await session.join(code);
+        const result = await Promise.race([session.join(code, showStage).then(() => 'joined'), cancelled]);
+        if (result === 'cancelled') failure = 'cancelled';
       } catch (err) {
+        failure = err;
+      }
+      if (failure) {
         session.leave();
-        error = explainError(err, code);
-        if (initialCode) {
-          // Came from a link or reload — say what happened, then go back to the menu.
-          await this.hud.showMessage({ title: 'Couldn’t join', body: error });
-          return;
+        lastCode = code;
+        code = null;
+        if (failure === 'cancelled') {
+          if (initialCode) return;
+          error = null;
+          continue;
         }
-        continue; // back to the keypad with the error shown
+        error = explainError(failure, lastCode);
+        await this.hud.showMessage({ title: 'Couldn’t join', body: error });
+        if (initialCode) return; // came from a link or reload — back to the menu
+        error = 'Couldn’t join — check the code and try again';
+        continue; // back to the keypad, code still filled in
       }
       setRoomInUrl(code);
       const result = await outcome;

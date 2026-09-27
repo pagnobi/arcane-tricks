@@ -327,7 +327,12 @@ export class Hud {
 
   #setPref(key, value) {
     this.prefs = { ...this.prefs, [key]: value };
-    this.onPrefsChange?.(this.prefs);
+    this.onPrefsChange?.({ [key]: value }); // just the change — see updatePrefs()
+    this.refreshPrefs();
+  }
+
+  /** Redraw anything showing preferences (e.g. after another tab changed them). */
+  refreshPrefs() {
     if (this.options.mesh.visible) this.options.render();
   }
 
@@ -477,10 +482,17 @@ export class Hud {
    * The host's lobby. `lobby` is live: call updateLobby() when players come and go.
    * Settings changes are reported through onChange. Resolves 'start' | 'cancel'.
    */
-  openHostLobby(lobby, { link, onChange }) {
+  openHostLobby(lobby, { link, onChange, copyText }) {
     this.lobby = lobby;
     const s = { ...lobby.settings };
+    let copied = null; // { what: 'code' | 'link', ok, until }
     return this.#prompt((done) => {
+      const copy = async (what) => {
+        const ok = await copyText(what === 'code' ? this.lobby.code : link);
+        copied = { what, ok, until: performance.now() + 2000 };
+        this.modal.render();
+        setTimeout(() => this.modal.mesh.visible && this.modal.render(), 2100);
+      };
       this.#openModal({
         width: 0.88,
         height: 0.6,
@@ -490,6 +502,8 @@ export class Hud {
             lobby: this.lobby,
             settings: s,
             link,
+            copied: copied && performance.now() < copied.until ? copied : null,
+            onCopy: copy,
             onChange: () => onChange({ ...s }),
             onStart: () => done('start'),
             onCancel: () => done('cancel'),
@@ -635,10 +649,20 @@ export class Hud {
     });
   }
 
-  /** A message nobody has to answer ("Connecting…"). Closed by closeInfo() or the next prompt. */
-  showBusy(title, body) {
+  /**
+   * A message nobody has to answer ("Connecting…"), optionally with one button (e.g. Cancel).
+   * Closed by closeInfo() or the next prompt; calling it again just updates the text.
+   */
+  showBusy(title, body, { button = null, onButton = null } = {}) {
     this.cancelPrompts(new Error('replaced'));
-    this.#openModal({ width: 0.6, height: 0.26, draw: (ctx, p) => drawMessage(ctx, p, { title, body }) });
+    this.#openModal({
+      width: 0.6,
+      height: button ? 0.3 : 0.26,
+      draw: (ctx, p) => drawMessage(ctx, p, { title, body, button, onOk: onButton }),
+      keys: (e) => {
+        if (button && e.key === 'Escape') onButton?.();
+      },
+    });
   }
 
   askBid(view, allowedBids) {

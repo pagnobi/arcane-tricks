@@ -25,8 +25,17 @@ export const PROTOCOL_VERSION = 1;
 export const PEER_PREFIX = 'arcane-tricks-v1-';
 export const CODE_LENGTH = 4;
 export const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // no I or O (look like 1 and 0)
-export const HEARTBEAT_MS = 2000;
-export const TIMEOUT_MS = 9000; // silence after which a connection counts as lost
+export const HEARTBEAT_MS = 2000; // guests ping this often; the host answers each ping straight away
+// Silence after which a connection counts as lost. Background tabs only run timers about once a
+// minute, so the lobby is generous (people wander off to share the code); in-game is quicker so a
+// bot can step in for someone who really dropped.
+export const CLIENT_TIMEOUT_MS = 20000;
+export const HOST_LOBBY_TIMEOUT_MS = 150000;
+export const HOST_GAME_TIMEOUT_MS = 25000;
+// How long each joining step may take before we give up with a clear message.
+export const BROKER_TIMEOUT_MS = 12000;
+export const CONNECT_TIMEOUT_MS = 20000;
+export const REPLY_TIMEOUT_MS = 12000;
 export const REJOIN_GRACE_MS = 15000; // how long a dropped player's turn waits before a bot steps in
 
 export const EMOTES = ['Nice!', 'Oops!', 'Well played', 'Hmm…', 'Ha!', 'Good game'];

@@ -290,6 +290,25 @@ describe('online table (loopback network)', () => {
     expect(host.game.history.every((h) => h.results[1].bid !== 99)).toBe(true);
   });
 
+  it('joining never hangs: a host that never replies gives a clear "no-reply" error', async () => {
+    const hub = new LoopbackHub();
+    const silentHost = hub.createHost(); // accepts connections but runs no table
+    await silentHost.open('MUTE');
+    const stages = [];
+    const guest = new ClientSession({
+      createNet: () => hub.createClient(),
+      presenter: new HeadlessPresenter(),
+      clientId: 'g',
+      name: 'Guest',
+      replyTimeoutMs: 30,
+    });
+    await expect(guest.join('MUTE', (s) => stages.push(s))).rejects.toThrow('no-reply');
+    expect(stages).toEqual(['hello']);
+    // …and a missing table fails straight away.
+    const lost = new ClientSession({ createNet: () => hub.createClient(), presenter: new HeadlessPresenter(), clientId: 'h', name: 'Guest' });
+    await expect(lost.join('NONE')).rejects.toThrow('not-found');
+  });
+
   it('relays poses and emotes in each receiver’s seat numbering', async () => {
     const { host, hostPresenter, clients } = await makeTable({ remotes: 2, settings: { numPlayers: 3 } });
     const game = host.start();

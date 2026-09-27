@@ -96,20 +96,31 @@ function seatList(ctx, lobby, { x, y, w, numPlayers, yourSeat }) {
   }
 }
 
-export function drawHostLobby(ctx, p, { lobby, settings, link, onChange, onStart, onCancel }) {
+export function drawHostLobby(ctx, p, { lobby, settings, link, copied, onCopy, onChange, onStart, onCancel }) {
   const W = p.pxWidth;
   const H = p.pxHeight;
   drawPanelBackground(ctx, W, H);
   const lx = 44;
   text(ctx, 'Your online table', lx, 56, { font: `bold 38px ${FONTS.serif}`, align: 'left', fill: THEME.gold });
-  text(ctx, 'Room code', lx, 108, { font: `21px ${FONTS.sans}`, align: 'left', fill: THEME.muted });
-  text(ctx, lobby.code.split('').join(' '), lx, 164, { font: `bold 76px ${FONTS.sans}`, align: 'left', fill: THEME.text });
-  text(ctx, 'Friends pick “Join a table” and enter this code,', lx, 222, { font: `19px ${FONTS.sans}`, align: 'left', fill: THEME.muted });
-  text(ctx, 'or open this link:', lx, 246, { font: `19px ${FONTS.sans}`, align: 'left', fill: THEME.muted });
-  text(ctx, link, lx, 272, { font: `bold 19px ${FONTS.sans}`, align: 'left', fill: THEME.gold, maxWidth: 420 });
+  text(ctx, 'Room code', lx, 104, { font: `21px ${FONTS.sans}`, align: 'left', fill: THEME.muted });
+  text(ctx, lobby.code.split('').join(' '), lx, 152, { font: `bold 72px ${FONTS.sans}`, align: 'left', fill: THEME.text });
 
-  text(ctx, 'Seats', lx, 320, { font: `bold 24px ${FONTS.sans}`, align: 'left', fill: THEME.gold });
-  seatList(ctx, lobby, { x: lx, y: 360, w: 400, numPlayers: settings.numPlayers, yourSeat: 0 });
+  const label = (what, normal) => (copied?.what === what ? (copied.ok ? 'Copied!' : 'Couldn’t copy') : normal);
+  p.button('copy-code', { x: lx, y: 196, w: 170, h: 46 }, label('code', 'Copy code'), {
+    size: 20,
+    selected: copied?.what === 'code',
+    onClick: () => onCopy('code'),
+  });
+  p.button('copy-link', { x: lx + 182, y: 196, w: 230, h: 46 }, label('link', 'Copy invite link'), {
+    size: 20,
+    primary: true,
+    onClick: () => onCopy('link'),
+  });
+  text(ctx, 'The link joins in one click — no typing needed.', lx, 266, { font: `18px ${FONTS.sans}`, align: 'left', fill: THEME.muted });
+  text(ctx, link, lx, 292, { font: `bold 17px ${FONTS.sans}`, align: 'left', fill: THEME.gold, maxWidth: 420 });
+
+  text(ctx, 'Seats', lx, 336, { font: `bold 24px ${FONTS.sans}`, align: 'left', fill: THEME.gold });
+  seatList(ctx, lobby, { x: lx, y: 372, w: 400, numPlayers: settings.numPlayers, yourSeat: 0 });
 
   ctx.strokeStyle = 'rgba(201,165,76,0.3)';
   ctx.lineWidth = 2;

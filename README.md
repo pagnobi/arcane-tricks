@@ -77,6 +77,23 @@ games, the host's table and every guest's table.
 It checks that no hidden card leaks, that a bot takes over after a drop, that rejoining works, and that
 illegal answers from a modified client are refused.
 
+### Connection problems
+
+The joining screen shows which of three steps it's on. Each step has a time limit, and there's a Cancel button:
+
+| Stuck at / message | What it means | Try |
+| --- | --- | --- |
+| Step 1 · "Couldn't reach the matchmaking service" | The browser can't reach PeerJS's broker | Check the internet connection; some filters block it |
+| "No table found with code…" | Wrong code, or the host's table isn't open | Use **Copy invite link** in the host lobby, so nobody has to type the code |
+| Step 2 · "Found the table, but couldn't connect to the host" | The two networks can't connect directly | Try another network (phone hotspot, home Wi-Fi) |
+| Step 3 · "the host's game didn't answer" | Connected, but the table isn't responding | Host: check the lobby is still open |
+
+The step-2 problem is the most common one between different households. Some networks (school, work, many
+mobile carriers) block direct connections, and then traffic has to go through a **TURN relay**. The game
+falls back to PeerJS's free community relay, but that's often overloaded. For reliable play, sign up for a
+TURN service and add its details to `ICE_SERVERS` in `src/net/PeerNet.js`. Metered's Open Relay has a free
+tier, and Cloudflare's TURN service is another option.
+
 ### Limitations of the peer-to-peer setup
 
 - **The host has to stay.** If the host closes their tab, the table ends for everyone.
