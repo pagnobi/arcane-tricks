@@ -1,3 +1,5 @@
+import { DEFAULT_LOOK, sanitizeLook } from './game/looks.js';
+
 // Working title. "Wizard" is a registered trademark of its publisher, so the game ships
 // under its own name — change it here (and in index.html / manifest) when you pick one.
 export const GAME_TITLE = 'Arcane Tricks';
@@ -45,6 +47,7 @@ export const DEFAULT_PREFS = {
   sfxVolume: 0.8, // 0–1
   vrPosture: 'seated', // 'seated' | 'standing'
   name: null, // your display name at online tables (a random one is picked on first run)
+  look: { ...DEFAULT_LOOK }, // your wizard's style + hat colour (see game/looks.js)
 };
 
 const PREFS_KEY = 'arcane-tricks:prefs';
@@ -52,7 +55,11 @@ const PREFS_KEY = 'arcane-tricks:prefs';
 export function loadPrefs() {
   try {
     const raw = localStorage.getItem(PREFS_KEY);
-    if (raw) return { ...DEFAULT_PREFS, ...JSON.parse(raw) };
+    if (raw) {
+      const prefs = { ...DEFAULT_PREFS, ...JSON.parse(raw) };
+      prefs.look = sanitizeLook(prefs.look);
+      return prefs;
+    }
   } catch {
     // fall back to defaults
   }

@@ -1,6 +1,7 @@
 import { Game } from '../game/Game.js';
 import { chooseBid, chooseCard, chooseTrumpSuit } from '../game/bots.js';
 import { SUITS, shuffle } from '../game/cards.js';
+import { DEFAULT_LOOK, randomLook, sanitizeLook } from '../game/looks.js';
 import { toViewSeat, viewFor } from '../game/views.js';
 import { BOT_NAMES } from '../config.js';
 import { Emitter } from '../net/Emitter.js';
@@ -26,7 +27,7 @@ const MAX_PLAYERS = 6;
  *   presence (someone connected/dropped) · snapshot (rejoin: redraw everything)
  */
 export class TableHost extends Emitter {
-  constructor({ presenter, net = null, hostName = 'You', settings, rng = Math.random, pause = sleep, graceMs = REJOIN_GRACE_MS }) {
+  constructor({ presenter, net = null, hostName = 'You', hostLook = DEFAULT_LOOK, settings, rng = Math.random, pause = sleep, graceMs = REJOIN_GRACE_MS }) {
     super();
     this.presenter = presenter;
     this.net = net;
@@ -34,7 +35,7 @@ export class TableHost extends Emitter {
     this.rng = rng;
     this.pause = pause;
     this.graceMs = graceMs;
-    this.seats = [{ kind: 'local', name: sanitizeName(hostName) || 'Host', connected: true }];
+    this.seats = [{ kind: 'local', name: sanitizeName(hostName) || 'Host', look: sanitizeLook(hostLook), connected: true }];
     this.started = false;
     this.aborted = false;
     this.autoplay = false; // dev/testing: bots decide for the local player too
@@ -140,7 +141,7 @@ export class TableHost extends Emitter {
       return;
     }
     const name = this.#uniqueName(sanitizeName(msg.name) || 'Guest');
-    this.seats.push({ kind: 'remote', name, clientId: String(msg.clientId), connId, connected: true });
+    this.seats.push({ kind: 'remote', name, look: sanitizeLook(msg.look), clientId: String(msg.clientId), connId, connected: true });
     this.settings.numPlayers = Math.max(this.settings.numPlayers, this.seats.length);
     this.#lobbyChanged();
   }
@@ -178,7 +179,9 @@ export class TableHost extends Emitter {
     const n = Math.min(MAX_PLAYERS, Math.max(this.settings.numPlayers, humans, 3));
     const taken = new Set(this.seats.map((s) => s.name));
     const botNames = shuffle(BOT_NAMES.filter((name) => !taken.has(name)), this.rng);
-    while (this.seats.length < n) this.seats.push({ kind: 'bot', name: botNames.pop() ?? `Bot ${this.seats.length}`, connected: true });
+    while (this.seats.length < n) {
+      this.seats.push({ kind: 'bot', name: botNames.pop() ?? `Bot ${this.seats.length}`, look: randomLook(this.rng), connected: true });
+    }
 
     this.started = true;
     // Lobby tolerates long silences (people off sharing the code); mid-game, notice drops sooner.

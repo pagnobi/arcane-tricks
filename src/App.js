@@ -85,13 +85,15 @@ const REJECTED = {
  * Top-level flow: home menu → solo game, hosting a table, or joining one → back to the menu.
  */
 export class App {
-  constructor({ world, cards, avatars, hud, sound, getName, setName }) {
+  constructor({ world, cards, avatars, hud, sound, getName, setName, getLook, setLook }) {
     this.world = world;
     this.cards = cards;
     this.avatars = avatars;
     this.hud = hud;
     this.getName = getName;
     this.setName = setName;
+    this.getLook = getLook;
+    this.setLook = setLook;
     this.presenter = new Presenter({ cards, avatars, hud, sound });
     this.poseSync = new PoseSync(world);
     this.clientId = loadClientId();
@@ -108,7 +110,7 @@ export class App {
       if (!isValidCode(joinCode)) {
         joinCode = null;
         try {
-          choice = await this.hud.showHome({ getName: this.getName });
+          choice = await this.hud.showHome({ getName: this.getName, getLook: this.getLook });
         } catch {
           continue; // the menu was replaced by another panel — just show it again afterwards
         }
@@ -117,6 +119,11 @@ export class App {
         const name = await this.hud.askName({ initial: this.getName(), randomName });
         if (name) this.setName(name);
         continue; // back to the home screen
+      }
+      if (choice === 'wizard') {
+        const look = await this.hud.askLook({ initial: this.getLook(), name: this.getName() });
+        if (look) this.setLook(look);
+        continue;
       }
       try {
         if (choice === 'solo') await this.#solo();
@@ -148,7 +155,7 @@ export class App {
     const settings = await this.hud.showSoloSetup(loadSettings());
     if (!settings) return;
     saveSettings(settings);
-    const host = new TableHost({ presenter: this.presenter, hostName: this.getName(), settings });
+    const host = new TableHost({ presenter: this.presenter, hostName: this.getName(), hostLook: this.getLook(), settings });
     host.autoplay = this.autoplay;
     this.presenter.reset('host');
     this.session = { quit: () => host.abort(), emote: () => {} };
@@ -158,7 +165,7 @@ export class App {
 
   async #host() {
     const net = new PeerHost();
-    const host = new TableHost({ presenter: this.presenter, net, hostName: this.getName(), settings: loadSettings() });
+    const host = new TableHost({ presenter: this.presenter, net, hostName: this.getName(), hostLook: this.getLook(), settings: loadSettings() });
     host.autoplay = this.autoplay;
     this.table = host;
     this.hud.showBusy('Opening your table…', 'Getting a room code');
@@ -197,7 +204,13 @@ export class App {
     for (;;) {
       if (!code) code = await this.hud.askRoomCode({ initial: error ? lastCode : '', error });
       if (!code) return;
-      const session = new ClientSession({ createNet: () => new PeerClient(), presenter: this.presenter, clientId: this.clientId, name: this.getName() });
+      const session = new ClientSession({
+        createNet: () => new PeerClient(),
+        presenter: this.presenter,
+        clientId: this.clientId,
+        name: this.getName(),
+        look: this.getLook(),
+      });
       this.presenter.reset('guest');
       const outcome = this.#guestOutcome(session);
       // Show which step we're on, with a way out if it's taking too long.

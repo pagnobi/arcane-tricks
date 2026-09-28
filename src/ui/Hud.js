@@ -6,7 +6,18 @@ import { SUITS, SUIT_INFO } from '../game/cards.js';
 import { DESKTOP_EYE, EYE } from '../scene/layout.js';
 import { DEFAULT_PREFS, GAME_TAGLINE } from '../config.js';
 import { CODE_LENGTH, EMOTES, NAME_CHAR, NAME_MAX, normalizeCode, sanitizeName } from '../net/protocol.js';
-import { drawGuestLobby, drawHome, drawHostLobby, drawKeypad, drawMessage, drawNameEditor, drawRules, messageHeightPx } from './lobbyScreens.js';
+import {
+  drawGuestLobby,
+  drawHome,
+  drawHostLobby,
+  drawKeypad,
+  drawLookEditor,
+  drawMessage,
+  drawNameEditor,
+  drawRules,
+  messageHeightPx,
+} from './lobbyScreens.js';
+import { randomLook, sanitizeLook } from '../game/looks.js';
 
 // Modal prompts float in front of you; the status board sits low-left of your hand
 // (a glance down in VR) and the score pad to the right when opened.
@@ -444,7 +455,7 @@ export class Hud {
   // ---------- menus & lobby ----------
 
   /** Home screen. Resolves 'solo' | 'host' | 'join' | 'name'. */
-  showHome({ getName }) {
+  showHome({ getName, getLook }) {
     return this.#prompt((done) => {
       this.#openModal({
         width: 0.72,
@@ -452,8 +463,10 @@ export class Hud {
         draw: (ctx, p) =>
           drawHome(ctx, p, {
             name: getName(),
+            look: getLook(),
             onPick: done,
             onRename: () => done('name'),
+            onWizard: () => done('wizard'),
             onOptions: () => this.toggleOptions(),
             optionsOpen: this.options.mesh.visible,
           }),
@@ -633,6 +646,41 @@ export class Hud {
           } else return;
           e.preventDefault();
           this.modal.render();
+        },
+      });
+    });
+  }
+
+  /** Choose your wizard's style and hat colour. Resolves the new look, or null if cancelled. */
+  askLook({ initial, name }) {
+    let look = sanitizeLook(initial);
+    return this.#prompt((done) => {
+      this.#openModal({
+        width: 0.8,
+        height: 0.56,
+        ppm: 1200,
+        draw: (ctx, p) =>
+          drawLookEditor(ctx, p, {
+            look,
+            name,
+            onSkin: (skin) => {
+              look = { ...look, skin };
+              p.render();
+            },
+            onHat: (hat) => {
+              look = { ...look, hat };
+              p.render();
+            },
+            onRandom: () => {
+              look = randomLook();
+              p.render();
+            },
+            onCancel: () => done(null),
+            onSave: () => done(look),
+          }),
+        keys: (e) => {
+          if (e.key === 'Enter') done(look);
+          if (e.key === 'Escape') done(null);
         },
       });
     });

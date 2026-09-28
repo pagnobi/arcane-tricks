@@ -2,6 +2,7 @@ import { FONTS, THEME, drawPanelBackground, roundRect, text, wrapLines, wrappedT
 import { totalRounds } from '../game/rules.js';
 import { CODE_ALPHABET, CODE_LENGTH } from '../net/protocol.js';
 import { GAME_TAGLINE, GAME_TITLE } from '../config.js';
+import { HAT_COLORS, SKINS, resolveLook } from '../game/looks.js';
 
 // Drawing for the menu / lobby screens. Each function paints a Panel and registers its buttons;
 // the Hud decides what the buttons do.
@@ -51,16 +52,18 @@ export function drawRules(ctx, p, s, { x, y, w, humans = 1, onChange }) {
   });
 }
 
-export function drawHome(ctx, p, { name, onPick, onRename, onOptions, optionsOpen }) {
+export function drawHome(ctx, p, { name, look, onPick, onRename, onWizard, onOptions, optionsOpen }) {
   const W = p.pxWidth;
   const H = p.pxHeight;
   drawPanelBackground(ctx, W, H);
   text(ctx, GAME_TITLE, W / 2, 68, { font: `bold 58px ${FONTS.serif}`, fill: THEME.gold });
   text(ctx, GAME_TAGLINE, W / 2, 114, { font: `24px ${FONTS.sans}`, fill: THEME.muted });
 
-  text(ctx, 'Playing as', 60, 178, { font: `21px ${FONTS.sans}`, align: 'left', fill: THEME.muted });
-  text(ctx, name, 60, 212, { font: `bold 32px ${FONTS.serif}`, align: 'left', fill: THEME.text, maxWidth: 420 });
-  p.button('rename', { x: W - 230, y: 172, w: 180, h: 48 }, 'Change name', { size: 21, onClick: onRename });
+  drawWizardPreview(ctx, 82, 244, 56, look);
+  text(ctx, 'Playing as', 128, 178, { font: `21px ${FONTS.sans}`, align: 'left', fill: THEME.muted });
+  text(ctx, name, 128, 212, { font: `bold 32px ${FONTS.serif}`, align: 'left', fill: THEME.text, maxWidth: W - 360 });
+  p.button('rename', { x: W - 222, y: 146, w: 180, h: 44 }, 'Change name', { size: 20, onClick: onRename });
+  p.button('wizard', { x: W - 222, y: 198, w: 180, h: 44 }, 'Your wizard', { size: 20, onClick: onWizard });
 
   const bx = W / 2 - 220;
   p.button('solo', { x: bx, y: 256, w: 440, h: 64 }, 'Play vs bots', { primary: true, size: 28, onClick: () => onPick('solo') });
@@ -167,6 +170,122 @@ export function drawKeypad(ctx, p, { code, error, onKey, onBack, onJoin, onCance
   p.button('cancel', { x: x0, y: by, w: 150, h: 58 }, 'Cancel', { size: 22, onClick: onCancel });
   p.button('back', { x: x0 + 166, y: by, w: 110, h: 58 }, '⌫', { size: 28, disabled: !code.length, onClick: onBack });
   p.button('join', { x: W - x0 - 250, y: by, w: 250, h: 58 }, 'Join', { primary: true, size: 28, disabled: code.length < CODE_LENGTH, onClick: onJoin });
+}
+
+const css = (hex) => `#${hex.toString(16).padStart(6, '0')}`;
+
+/**
+ * A flat drawing of a wizard in a given look, matching the 3D figure's proportions.
+ * (cx, baseY) is the floor under its feet; `scale` is pixels per metre.
+ */
+export function drawWizardPreview(ctx, cx, baseY, scale, look) {
+  const s = resolveLook(look);
+  const X = (x) => cx + x * scale;
+  const Y = (y) => baseY - y * scale;
+  const poly = (points, fill) => {
+    ctx.beginPath();
+    points.forEach(([x, y], i) => (i ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y))));
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+  };
+  const ellipse = (x, y, rx, ry, fill) => {
+    ctx.beginPath();
+    ctx.ellipse(X(x), Y(y), rx * scale, ry * scale, 0, 0, Math.PI * 2);
+    ctx.fillStyle = fill;
+    ctx.fill();
+  };
+
+  // Robe, hem and collar
+  poly([[-0.24, 0.29], [0.24, 0.29], [0, 1.15]], css(s.robe));
+  poly([[-0.235, 0.29], [0.235, 0.29], [0.22, 0.34], [-0.22, 0.34]], css(s.trim));
+  ellipse(0, 1.1, 0.085, 0.022, css(s.trim));
+  // Head, eyes, beard
+  ellipse(0, 1.24, 0.105, 0.105, css(s.skinTone));
+  if (s.beard !== null) poly([[-0.07, 1.2], [0.07, 1.2], [0, 1.02]], css(s.beard));
+  ellipse(-0.036, 1.26, 0.013, 0.013, '#111');
+  ellipse(0.036, 1.26, 0.013, 0.013, '#111');
+  // Hat
+  const hat = css(s.hatColor);
+  const brimY = 1.33;
+  if (s.hatStyle === 'crooked') {
+    poly([[-0.13, brimY], [0.13, brimY], [0.06, brimY + 0.2], [-0.05, brimY + 0.2]], hat);
+    poly([[-0.05, brimY + 0.19], [0.06, brimY + 0.2], [0.2, brimY + 0.3]], hat);
+  } else {
+    const h = s.hatStyle === 'tall' ? 0.46 : s.hatStyle === 'wide' ? 0.3 : 0.34;
+    const r = s.hatStyle === 'tall' ? 0.11 : 0.13;
+    const lean = s.hatStyle === 'classic' ? 0.05 : 0;
+    poly([[-r, brimY], [r, brimY], [lean, brimY + h]], hat);
+  }
+  poly([[-0.13, brimY], [0.13, brimY], [0.125, brimY + 0.03], [-0.125, brimY + 0.03]], css(s.trim));
+  const brim = s.hatStyle === 'wide' ? 0.26 : s.hatStyle === 'tall' ? 0.17 : 0.19;
+  ellipse(0, brimY, brim, 0.025, hat);
+}
+
+/** Choose your wizard: a style and a hat colour, with a live preview. */
+export function drawLookEditor(ctx, p, { look, name, onSkin, onHat, onRandom, onCancel, onSave }) {
+  const W = p.pxWidth;
+  const H = p.pxHeight;
+  drawPanelBackground(ctx, W, H);
+  text(ctx, 'Your wizard', W / 2, 48, { font: `bold 38px ${FONTS.serif}`, fill: THEME.gold });
+  text(ctx, 'This is how other players see you at online tables', W / 2, 86, { font: `20px ${FONTS.sans}`, fill: THEME.muted });
+
+  // Preview
+  roundRect(ctx, 36, 110, 300, 440, 18);
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.fill();
+  drawWizardPreview(ctx, 186, 560, 225, look);
+  text(ctx, name, 186, 136, { font: `bold 24px ${FONTS.serif}`, fill: THEME.gold, maxWidth: 280 });
+
+  // Styles
+  const rx = 370;
+  text(ctx, 'Style', rx, 130, { font: `bold 24px ${FONTS.sans}`, align: 'left', fill: THEME.gold });
+  SKINS.forEach((skin, i) => {
+    const x = rx + (i % 2) * 280;
+    const y = 150 + Math.floor(i / 2) * 58;
+    const selected = look.skin === skin.id;
+    p.button(`skin-${skin.id}`, { x, y, w: 268, h: 50 }, '', {
+      selected,
+      primary: selected,
+      onClick: () => onSkin(skin.id),
+      render: (c, rect) => {
+        c.beginPath();
+        c.arc(rect.x + 28, rect.y + rect.h / 2, 13, 0, Math.PI * 2);
+        c.fillStyle = css(skin.robe);
+        c.fill();
+        c.lineWidth = 3;
+        c.strokeStyle = css(skin.trim);
+        c.stroke();
+        text(c, skin.name, rect.x + 52, rect.y + rect.h / 2 + 1, { font: `bold 20px ${FONTS.sans}`, align: 'left', fill: selected ? '#1a1206' : THEME.text });
+      },
+    });
+  });
+
+  // Hat colours
+  text(ctx, 'Hat colour', rx, 400, { font: `bold 24px ${FONTS.sans}`, align: 'left', fill: THEME.gold });
+  HAT_COLORS.forEach((hat, i) => {
+    const x = rx + (i % 5) * 110;
+    const y = 422 + Math.floor(i / 5) * 72;
+    const selected = look.hat === hat.id;
+    p.button(`hat-${hat.id}`, { x, y, w: 96, h: 62 }, '', {
+      selected,
+      onClick: () => onHat(hat.id),
+      render: (c, rect) => {
+        c.beginPath();
+        c.arc(rect.x + rect.w / 2, rect.y + rect.h / 2, 20, 0, Math.PI * 2);
+        c.fillStyle = css(hat.color);
+        c.fill();
+        c.lineWidth = selected ? 4 : 2;
+        c.strokeStyle = selected ? THEME.gold : 'rgba(255,255,255,0.35)';
+        c.stroke();
+      },
+    });
+  });
+
+  const by = H - 84;
+  p.button('random', { x: 36, y: by, w: 200, h: 58 }, 'Surprise me', { size: 22, onClick: onRandom });
+  p.button('cancel', { x: W - 36 - 260 - 16 - 170, y: by, w: 170, h: 58 }, 'Cancel', { size: 22, onClick: onCancel });
+  p.button('save', { x: W - 36 - 260, y: by, w: 260, h: 58 }, 'Save', { primary: true, size: 26, onClick: onSave });
 }
 
 const NAME_ROWS = ['1234567890', 'QWERTYUIOP', 'ASDFGHJKL', "ZXCVBNM'-."];

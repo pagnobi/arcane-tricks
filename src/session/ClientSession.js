@@ -12,8 +12,9 @@ const RECONNECT_FOR_MS = 90000;
  * Emits: lobby(info) · started · rejected(reason) · closed · reconnecting · reconnected · lost · ended
  */
 export class ClientSession extends Emitter {
-  constructor({ createNet, presenter, clientId, name, reconnectEveryMs = RECONNECT_EVERY_MS, replyTimeoutMs = REPLY_TIMEOUT_MS }) {
+  constructor({ createNet, presenter, clientId, name, look = null, reconnectEveryMs = RECONNECT_EVERY_MS, replyTimeoutMs = REPLY_TIMEOUT_MS }) {
     super();
+    this.look = look;
     this.createNet = createNet;
     this.reconnectEveryMs = reconnectEveryMs;
     this.replyTimeoutMs = replyTimeoutMs;
@@ -60,7 +61,7 @@ export class ClientSession extends Emitter {
     this.net = net;
     net.on('message', (msg) => this.#onMessage(msg));
     net.on('disconnect', () => this.#onLost(net));
-    net.send({ type: 'hello', clientId: this.clientId, name: this.name, version: PROTOCOL_VERSION });
+    net.send({ type: 'hello', clientId: this.clientId, name: this.name, look: this.look, version: PROTOCOL_VERSION });
   }
 
   #onMessage(msg) {

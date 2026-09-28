@@ -6,6 +6,7 @@ import { LoopbackHub } from '../src/net/LoopbackNet.js';
 import { ClientSession } from '../src/session/ClientSession.js';
 import { TableHost } from '../src/session/TableHost.js';
 import { NAME_MAX, normalizeCode, isValidCode, makeRoomCode, sanitizeName } from '../src/net/protocol.js';
+import { DEFAULT_LOOK, randomLook, resolveLook, sanitizeLook } from '../src/game/looks.js';
 
 const noPause = () => Promise.resolve();
 const settle = () => new Promise((r) => setTimeout(r, 0));
@@ -153,6 +154,47 @@ describe('player names', () => {
     expect(host.seats.map((s) => s.name)).toEqual(['Merlin', 'Merlin 2', 'Merlin 3', 'Guest', 'X'.repeat(NAME_MAX)]);
     // Bots never borrow a player's name.
     await host.start().catch(() => {});
+  });
+});
+
+describe('wizard looks', () => {
+  it('only known styles and hat colours get through', () => {
+    expect(sanitizeLook({ skin: 'frost', hat: 'gold' })).toEqual({ skin: 'frost', hat: 'gold' });
+    expect(sanitizeLook({ skin: '<img onerror>', hat: 'gold' })).toEqual({ skin: DEFAULT_LOOK.skin, hat: 'gold' });
+    expect(sanitizeLook(null)).toEqual(DEFAULT_LOOK);
+    expect(sanitizeLook({ skin: 'frost', hat: 'gold', extra: 'x'.repeat(1e5) })).toEqual({ skin: 'frost', hat: 'gold' });
+    for (let i = 0; i < 20; i++) {
+      const look = randomLook();
+      expect(sanitizeLook(look)).toEqual(look);
+      expect(resolveLook(look).hatColor).toBeTypeOf('number');
+    }
+  });
+
+  it('everyone sees the same wizards: players keep their chosen look, bots get one from the host', async () => {
+    const hub = new LoopbackHub();
+    const host = new TableHost({
+      presenter: new HeadlessPresenter(),
+      net: hub.createHost(),
+      hostLook: { skin: 'warlock', hat: 'black' },
+      settings: { numPlayers: 4, shortGame: true },
+      rng: seededRandom(5),
+      pause: noPause,
+    });
+    await host.openRoom('LOOK');
+    const guests = [];
+    for (const [id, look] of [['a', { skin: 'frost', hat: 'teal' }], ['b', { skin: 'hacked', hat: 'nope' }]]) {
+      const presenter = new HeadlessPresenter();
+      await new ClientSession({ createNet: () => hub.createClient(), presenter, clientId: id, name: id, look }).join('LOOK');
+      guests.push(presenter);
+    }
+    await host.start();
+    await settle();
+    const byName = (view) => Object.fromEntries(view.players.map((p) => [p.name, p.look]));
+    const hostView = byName(host.presenter.events[0].view);
+    expect(hostView.a).toEqual({ skin: 'frost', hat: 'teal' });
+    expect(hostView.b).toEqual(DEFAULT_LOOK); // invalid look replaced
+    expect(Object.values(hostView).every((l) => l && sanitizeLook(l).skin === l.skin)).toBe(true);
+    for (const g of guests) expect(byName(g.events[0].view)).toEqual(hostView); // bots included
   });
 });
 

@@ -53,6 +53,10 @@ const app = new App({
   setName: (name) => {
     hud.prefs = updatePrefs({ name });
   },
+  getLook: () => hud.prefs.look,
+  setLook: (look) => {
+    hud.prefs = updatePrefs({ look });
+  },
 });
 app.run();
 

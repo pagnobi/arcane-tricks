@@ -40,6 +40,7 @@ export function viewFor(game, viewer, seats) {
       name: p.name,
       isHuman: v === 0, // "is this you" — the UI shows "You" for seat 0
       isBot: meta.kind === 'bot',
+      look: meta.look ?? null,
       connected: meta.kind === 'bot' ? true : meta.connected !== false,
       bid: p.bid === null ? null : hideBids && g !== viewer ? '?' : p.bid,
       tricks: p.tricks,

@@ -1,4 +1,7 @@
 node_modules
 dist
 *.local
+# Local credentials — never commit
+turnCreds.txt
+.dev.vars
 .DS_Store

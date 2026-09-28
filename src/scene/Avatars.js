@@ -2,35 +2,66 @@ import * as THREE from 'three';
 import { Panel } from '../ui/Panel.js';
 import { FONTS, THEME, drawPanelBackground, roundRect, text } from '../ui/draw.js';
 import { EYE, nameplatePosition, seatAngle, seatFrame, seatPosition, turnMarkerPosition } from './layout.js';
+import { randomLook, resolveLook } from '../game/looks.js';
 
-const ROBE_COLORS = [0x6a3fb5, 0x2f7a8c, 0xa8413b, 0x3f7d3a, 0xb0842c, 0x39519e];
-const HAT_COLORS = [0x3b1f73, 0x1d4c58, 0x6b2420, 0x234a20, 0x6e4f14, 0x222f66];
 const HEAD_Y = 1.24;
 const EMOTE_SECONDS = 3;
 
-/** A seated wizard: a robe body plus a separate head group (so a real player's head can move). */
-function makeWizardFigure(i, { beard = i % 3 !== 1 } = {}) {
-  const robe = new THREE.MeshStandardMaterial({ color: ROBE_COLORS[i % ROBE_COLORS.length], roughness: 0.8 });
-  const hatMat = new THREE.MeshStandardMaterial({ color: HAT_COLORS[i % HAT_COLORS.length], roughness: 0.7 });
-  const skin = new THREE.MeshStandardMaterial({ color: 0xe6c3a0, roughness: 0.8 });
+/** The hat for a style, built around the top of the head (y = 0 is the head's centre). */
+function makeHat(style, hatMat, trimMat) {
+  const hat = new THREE.Group();
+  const brimRadius = style === 'wide' ? 0.26 : style === 'tall' ? 0.17 : 0.19;
+  const brim = new THREE.Mesh(new THREE.CylinderGeometry(brimRadius, brimRadius, 0.015, 32), hatMat);
+  brim.position.y = 0.09;
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.128, 0.132, 0.03, 32, 1, true), trimMat);
+  band.position.y = 0.113;
+  hat.add(brim, band);
+  if (style === 'crooked') {
+    // A short cone with a floppy tip bent to one side.
+    const base = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.22, 24, 1, true), hatMat);
+    base.position.y = 0.2;
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.075, 0.22, 20), hatMat);
+    tip.position.set(0.05, 0.36, 0);
+    tip.rotation.z = -0.6;
+    hat.add(base, tip);
+  } else {
+    const height = style === 'tall' ? 0.46 : style === 'wide' ? 0.3 : 0.34;
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(style === 'tall' ? 0.11 : 0.13, height, 24), hatMat);
+    cone.position.y = 0.09 + height / 2;
+    if (style === 'classic') cone.rotation.z = -0.12;
+    hat.add(cone);
+  }
+  return hat;
+}
+
+/**
+ * A seated wizard in a given look (see game/looks.js): a robe body plus a separate head group,
+ * so a real player's head can move independently.
+ */
+export function makeWizardFigure(look) {
+  const style = resolveLook(look);
+  const robe = new THREE.MeshStandardMaterial({ color: style.robe, roughness: 0.8 });
+  const trimMat = new THREE.MeshStandardMaterial({ color: style.trim, roughness: 0.6 });
+  const hatMat = new THREE.MeshStandardMaterial({ color: style.hatColor, roughness: 0.7 });
+  const skin = new THREE.MeshStandardMaterial({ color: style.skinTone, roughness: 0.8 });
   const dark = new THREE.MeshBasicMaterial({ color: 0x111111 });
 
   const root = new THREE.Group();
   const body = new THREE.Mesh(new THREE.ConeGeometry(0.24, 0.86, 24), robe);
   body.position.y = 0.72;
-  root.add(body);
+  const collar = new THREE.Mesh(new THREE.TorusGeometry(0.075, 0.018, 8, 24), trimMat);
+  collar.rotation.x = Math.PI / 2;
+  collar.position.y = 1.1;
+  const hem = new THREE.Mesh(new THREE.CylinderGeometry(0.235, 0.245, 0.05, 32, 1, true), trimMat);
+  hem.position.y = 0.33;
+  root.add(body, collar, hem);
 
   const head = new THREE.Group();
   head.position.y = HEAD_Y;
   const skull = new THREE.Mesh(new THREE.SphereGeometry(0.105, 24, 16), skin);
-  const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.19, 0.015, 24), hatMat);
-  brim.position.y = 0.09;
-  const hat = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.34, 24), hatMat);
-  hat.position.y = 0.26;
-  hat.rotation.z = (i % 2 ? 1 : -1) * 0.12;
-  head.add(skull, brim, hat);
-  if (beard) {
-    const b = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.18, 16), new THREE.MeshStandardMaterial({ color: 0xe8e4dc }));
+  head.add(skull, makeHat(style.hatStyle, hatMat, trimMat));
+  if (style.beard !== null) {
+    const b = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.18, 16), new THREE.MeshStandardMaterial({ color: style.beard }));
     b.position.set(0, -0.12, 0.07);
     b.rotation.x = Math.PI;
     head.add(b);
@@ -125,8 +156,9 @@ export class Avatars {
     this.multiplayer = multiplayer;
     for (let seat = 1; seat < n; seat++) {
       const player = view.players[seat];
-      const look = seat + Math.floor(Math.random() * 6);
-      const figure = makeWizardFigure(look, { beard: player.isBot ? undefined : false });
+      // The host picks every look (players choose theirs, bots get random ones), so all players
+      // see the same wizards. Older hosts don't send looks — fall back to a random one.
+      const figure = makeWizardFigure(player.look ?? randomLook());
       figure.root.position.copy(seatPosition(seat, n));
       figure.root.rotation.y = seatAngle(seat, n) + Math.PI;
       // Far-away nameplates are drawn larger so they stay readable.
