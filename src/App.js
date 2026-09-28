@@ -107,7 +107,11 @@ export class App {
       let choice = 'join';
       if (!isValidCode(joinCode)) {
         joinCode = null;
-        choice = await this.hud.showHome({ getName: this.getName });
+        try {
+          choice = await this.hud.showHome({ getName: this.getName });
+        } catch {
+          continue; // the menu was replaced by another panel — just show it again afterwards
+        }
       }
       if (choice === 'name') {
         const name = await this.hud.askName({ initial: this.getName(), randomName });
@@ -219,7 +223,8 @@ export class App {
           continue;
         }
         error = explainError(failure, lastCode);
-        await this.hud.showMessage({ title: 'Couldn’t join', body: error });
+        const detail = failure.detail ? ` (Details: ${failure.detail}.)` : '';
+        await this.hud.showMessage({ title: 'Couldn’t join', body: error + detail });
         if (initialCode) return; // came from a link or reload — back to the menu
         error = 'Couldn’t join — check the code and try again';
         continue; // back to the keypad, code still filled in

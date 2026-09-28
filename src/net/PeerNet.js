@@ -18,12 +18,26 @@ import {
 // player (closed laptop, lost Wi-Fi) is noticed even when WebRTC doesn't report the close.
 
 // STUN servers help each browser discover a public address so the two can connect directly.
-// When a network blocks direct connections, traffic must go through a TURN relay instead: PeerJS's
-// free community relay is listed as a last resort, but it's often overloaded. For reliable play
-// across strict networks, add your own TURN server here (see README → "Connection problems").
+// When a network blocks direct connections, traffic must go through a TURN relay instead.
+// Your own relay comes from build-time settings (see README → "Connection problems"):
+//   VITE_TURN_URLS        comma-separated, e.g. turn:host:80,turn:host:443?transport=tcp,turns:host:443
+//   VITE_TURN_USERNAME / VITE_TURN_CREDENTIAL
+// PeerJS's free community relay stays as a last resort, but it's often overloaded.
+const env = import.meta.env ?? {};
+const customTurn = env.VITE_TURN_URLS
+  ? [
+      {
+        urls: env.VITE_TURN_URLS.split(',').map((u) => u.trim()).filter(Boolean),
+        username: env.VITE_TURN_USERNAME,
+        credential: env.VITE_TURN_CREDENTIAL,
+      },
+    ]
+  : [];
+export const HAS_CUSTOM_TURN = customTurn.length > 0;
 const ICE_SERVERS = [
   { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] },
   { urls: 'stun:stun.cloudflare.com:3478' },
+  ...customTurn,
   { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'], username: 'peerjs', credential: 'peerjsp' },
 ];
 const PEER_OPTIONS = { debug: 1, config: { iceServers: ICE_SERVERS } };
@@ -165,12 +179,17 @@ export class PeerClient extends Emitter {
     onStage('host');
     await new Promise((resolve, reject) => {
       const conn = peer.connect(PEER_PREFIX + code, { reliable: true, serialization: 'json' });
+      // Note which kinds of route this browser found — tells us, if it fails, whether a relay was reachable.
+      const routes = new Set();
+      conn.peerConnection?.addEventListener('icecandidate', (e) => e.candidate?.type && routes.add(e.candidate.type));
       let settled = false;
       const fail = (reason) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        reject(new Error(reason));
+        const error = new Error(reason);
+        error.detail = `routes found: ${[...routes].join(', ') || 'none'}; relay ${routes.has('relay') ? 'reachable' : 'NOT reachable'}${HAS_CUSTOM_TURN ? ' (custom TURN configured)' : ''}`;
+        reject(error);
       };
       const timer = setTimeout(() => fail('no-direct-connection'), CONNECT_TIMEOUT_MS);
       peer.once('error', (err) => fail(err?.type === 'peer-unavailable' ? 'not-found' : err?.type || 'peer-error'));

@@ -1,4 +1,4 @@
-import { FONTS, THEME, drawPanelBackground, roundRect, text, wrappedText } from './draw.js';
+import { FONTS, THEME, drawPanelBackground, roundRect, text, wrapLines, wrappedText } from './draw.js';
 import { totalRounds } from '../game/rules.js';
 import { CODE_ALPHABET, CODE_LENGTH } from '../net/protocol.js';
 import { GAME_TAGLINE, GAME_TITLE } from '../config.js';
@@ -239,11 +239,24 @@ export function drawGuestLobby(ctx, p, { lobby, onLeave }) {
   p.button('leave', { x: W / 2 - 110, y: H - 84, w: 220, h: 58 }, 'Leave table', { size: 24, onClick: onLeave });
 }
 
+const MESSAGE_FONT = `23px ${FONTS.sans}`;
+const MESSAGE_LINE = 31;
+const MESSAGE_WIDTH_PX = 600;
+
+/** Height (in canvas px) a message box needs so its text never overflows. */
+export function messageHeightPx(ctx, { body, button }) {
+  const lines = body ? wrapLines(ctx, body, MESSAGE_WIDTH_PX - 60, MESSAGE_FONT).length : 0;
+  return 100 + lines * MESSAGE_LINE + (button ? 104 : 34);
+}
+
 export function drawMessage(ctx, p, { title, body, button, onOk }) {
   const W = p.pxWidth;
   const H = p.pxHeight;
   drawPanelBackground(ctx, W, H);
-  text(ctx, title, W / 2, 54, { font: `bold 36px ${FONTS.serif}`, fill: THEME.gold, maxWidth: W - 40 });
-  wrappedText(ctx, body ?? '', W / 2, button ? 132 : 140, W - 60, 30, { font: `23px ${FONTS.sans}`, fill: THEME.text });
+  text(ctx, title, W / 2, 52, { font: `bold 36px ${FONTS.serif}`, fill: THEME.gold, maxWidth: W - 40 });
+  // Lines flow down from under the title; the box is sized to fit them (messageHeightPx).
+  wrapLines(ctx, body ?? '', W - 60, MESSAGE_FONT).forEach((line, i) =>
+    text(ctx, line, W / 2, 108 + i * MESSAGE_LINE, { font: MESSAGE_FONT, fill: THEME.text }),
+  );
   if (button) p.button('ok', { x: W / 2 - 110, y: H - 80, w: 220, h: 58 }, button, { primary: true, size: 26, onClick: onOk });
 }

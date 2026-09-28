@@ -54,12 +54,12 @@ export function text(ctx, str, x, y, opts = {}) {
   ctx.fillText(str, x, y, maxWidth);
 }
 
-/** Draw text wrapped to maxWidth, vertically centred on y. */
-export function wrappedText(ctx, str, x, y, maxWidth, lineHeight, opts = {}) {
-  ctx.font = opts.font ?? `28px ${FONTS.sans}`;
+/** Split text into lines no wider than maxWidth in the given font. */
+export function wrapLines(ctx, str, maxWidth, font) {
+  ctx.font = font;
   const lines = [];
   let line = '';
-  for (const word of str.split(' ')) {
+  for (const word of String(str).split(' ')) {
     const next = line ? `${line} ${word}` : word;
     if (line && ctx.measureText(next).width > maxWidth) {
       lines.push(line);
@@ -69,6 +69,12 @@ export function wrappedText(ctx, str, x, y, maxWidth, lineHeight, opts = {}) {
     }
   }
   if (line) lines.push(line);
+  return lines;
+}
+
+/** Draw text wrapped to maxWidth, vertically centred on y. */
+export function wrappedText(ctx, str, x, y, maxWidth, lineHeight, opts = {}) {
+  const lines = wrapLines(ctx, str, maxWidth, opts.font ?? `28px ${FONTS.sans}`);
   const top = y - ((lines.length - 1) * lineHeight) / 2;
   lines.forEach((l, i) => text(ctx, l, x, top + i * lineHeight, { ...opts, maxWidth }));
 }

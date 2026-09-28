@@ -3,10 +3,10 @@ import { Panel } from './Panel.js';
 import { FONTS, THEME, drawPanelBackground, text, wrappedText } from './draw.js';
 import { drawSuitGlyph } from '../scene/cardTextures.js';
 import { SUITS, SUIT_INFO } from '../game/cards.js';
-import { EYE } from '../scene/layout.js';
+import { DESKTOP_EYE, EYE } from '../scene/layout.js';
 import { DEFAULT_PREFS, GAME_TAGLINE } from '../config.js';
 import { CODE_LENGTH, EMOTES, NAME_CHAR, NAME_MAX, normalizeCode, sanitizeName } from '../net/protocol.js';
-import { drawGuestLobby, drawHome, drawHostLobby, drawKeypad, drawMessage, drawNameEditor, drawRules } from './lobbyScreens.js';
+import { drawGuestLobby, drawHome, drawHostLobby, drawKeypad, drawMessage, drawNameEditor, drawRules, messageHeightPx } from './lobbyScreens.js';
 
 // Modal prompts float in front of you; the status board sits low-left of your hand
 // (a glance down in VR) and the score pad to the right when opened.
@@ -85,7 +85,7 @@ export class Hud {
   #layoutHud() {
     const cam = this.world.camera;
     const xr = this.world.isXR;
-    const key = `${xr}|${cam.aspect.toFixed(3)}|${cam.fov.toFixed(2)}|${this.scorepad.height}`;
+    const key = `${xr}|${cam.aspect.toFixed(3)}|${cam.fov.toFixed(2)}|${this.scorepad.height}|${this.modal.width}x${this.modal.height}`;
     if (key === this.layoutKey) return;
     this.layoutKey = key;
 
@@ -96,7 +96,7 @@ export class Hud {
       [this.emotes, EMOTES_POS, -1, -1],
     ];
     if (xr) {
-      for (const [panel, pos] of pinned) {
+      for (const [panel, pos] of [...pinned, [this.modal, MODAL_POS]]) {
         this.world.scene.add(panel.holder);
         panel.holder.position.copy(pos);
         panel.holder.scale.setScalar(1);
@@ -126,6 +126,18 @@ export class Hud {
     }
     // The emote bar sits just above the status board.
     this.emotes.holder.position.y += (this.status.height + 0.012) * scale;
+
+    // Dialogs: centred on screen at the size they'd appear in the room, shrunk to fit narrow
+    // windows (phones held upright), and drawn over everything else.
+    const modal = this.modal;
+    const natural = dist / MODAL_POS.distanceTo(DESKTOP_EYE);
+    const fit = Math.min(natural, (0.94 * 2 * hw) / modal.width, (0.9 * 2 * hh) / modal.height);
+    cam.add(modal.holder);
+    modal.holder.quaternion.identity();
+    modal.holder.scale.setScalar(fit);
+    modal.holder.position.set(0, Math.min(0.08 * hh, hh - (modal.height * fit) / 2), -dist);
+    modal.material.depthTest = false;
+    modal.mesh.renderOrder = 11;
   }
 
   // ---------- modal plumbing ----------
@@ -640,7 +652,7 @@ export class Hud {
     return this.#prompt((done) => {
       this.#openModal({
         width: 0.6,
-        height: 0.3,
+        height: messageHeightPx(this.modal.ctx, { body, button }) / 1000,
         draw: (ctx, p) => drawMessage(ctx, p, { title, body, button, onOk: () => done() }),
         keys: (e) => {
           if (e.key === 'Enter' || e.key === 'Escape') done();
@@ -657,7 +669,7 @@ export class Hud {
     this.cancelPrompts(new Error('replaced'));
     this.#openModal({
       width: 0.6,
-      height: button ? 0.3 : 0.26,
+      height: messageHeightPx(this.modal.ctx, { body, button }) / 1000,
       draw: (ctx, p) => drawMessage(ctx, p, { title, body, button, onOk: onButton }),
       keys: (e) => {
         if (button && e.key === 'Escape') onButton?.();
