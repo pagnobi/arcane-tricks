@@ -89,10 +89,15 @@ The joining screen shows which of three steps it's on. Each step has a time limi
 | Step 3 · "the host's game didn't answer" | Connected, but the table isn't responding | Host: check the lobby is still open |
 
 The step-2 problem is the most common one between different households. Some networks (school, work, many
-mobile carriers) block direct connections, and then traffic has to go through a **TURN relay**. The game
-falls back to PeerJS's free community relay, but that's often overloaded. For reliable play, sign up for a
-TURN service and add its details to `ICE_SERVERS` in `src/net/PeerNet.js`. Metered's Open Relay has a free
-tier, and Cloudflare's TURN service is another option.
+mobile carriers) block direct connections, and then traffic has to go through a **TURN relay**.
+
+- **Recommended: Cloudflare's relay.** The small Worker in [`worker/`](worker/README.md) hands the game
+  short-lived Cloudflare TURN credentials. Deploy it, then set the repo variable `ICE_ENDPOINT` to its `/ice` URL.
+- **Or any fixed TURN server:** set repo secrets `TURN_URLS`, `TURN_USERNAME` and `TURN_CREDENTIAL`.
+- **Without either,** the game falls back to PeerJS's free community relay, which is often overloaded.
+
+The "Details" line on a failed join shows whether a relay was reachable and where it came from.
+Server selection lives in `src/net/iceServers.js`.
 
 ### Limitations of the peer-to-peer setup
 

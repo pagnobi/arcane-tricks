@@ -1,0 +1,7 @@
+name = "arcane-tricks-ice"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+[vars]
+# Sites allowed to request relay credentials. Add your custom domain here if you get one.
+ALLOWED_ORIGINS = "https://pagnobi.github.io,http://localhost:5173"
