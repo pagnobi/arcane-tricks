@@ -732,8 +732,24 @@ export class Hud {
     for (let b = 0; b <= max; b++) if (!allowed.has(b)) forbidden.push(b);
     const cols = Math.min(max + 1, 7);
     const rows = Math.ceil((max + 1) / cols);
-    const gridTop = forbidden.length ? 150 : 118;
+    const gridTop = forbidden.length ? 190 : 158;
     const heightPx = gridTop + rows * 70 + 18;
+
+    // Tricks already called by the players before you (unknown while bids are hidden).
+    const others = view.players.filter((pl) => pl.index !== 0 && pl.bid !== null);
+    const hidden = others.some((pl) => pl.bid === '?');
+    const called = others.reduce((sum, pl) => sum + (typeof pl.bid === 'number' ? pl.bid : 0), 0);
+    let calledText;
+    let calledColor = THEME.text;
+    if (hidden) {
+      calledText = 'Bids are hidden until everyone has bid';
+      calledColor = THEME.muted;
+    } else if (others.length === 0) {
+      calledText = `0/${max} tricks called · you bid first`;
+    } else {
+      calledText = `${called}/${max} tricks called so far`;
+      if (called > max) calledText += ` (${called - max} over)`;
+    }
 
     return this.#prompt((done) => {
       this.#openModal({
@@ -744,8 +760,9 @@ export class Hud {
           drawPanelBackground(ctx, W, p.pxHeight);
           text(ctx, 'Your bid', W / 2, 44, { font: `bold 38px ${FONTS.serif}`, fill: THEME.gold });
           text(ctx, `How many of the ${max} trick${max === 1 ? '' : 's'} will you win?`, W / 2, 88, { font: `24px ${FONTS.sans}`, fill: THEME.muted });
+          text(ctx, calledText, W / 2, 128, { font: `bold 26px ${FONTS.sans}`, fill: calledColor });
           if (forbidden.length) {
-            text(ctx, `Dealer rule: you can’t bid ${forbidden.join(', ')}`, W / 2, 122, { font: `bold 22px ${FONTS.sans}`, fill: THEME.bad });
+            text(ctx, `Dealer rule: you can’t bid ${forbidden.join(', ')}`, W / 2, 162, { font: `bold 22px ${FONTS.sans}`, fill: THEME.bad });
           }
           const x0 = (W - (cols * 72 - 10)) / 2;
           for (let b = 0; b <= max; b++) {

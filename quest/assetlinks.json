@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.pagnobi.arcanetricks",
+      "sha256_cert_fingerprints": [
+        "5E:F7:36:D4:0B:FC:44:A7:5F:52:C9:4C:0E:EB:DA:1A:A5:A2:53:8F:49:3A:26:5B:E4:CA:D0:72:D4:15:F1:4A"
+      ]
+    }
+  }
+]

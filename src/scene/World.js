@@ -65,6 +65,25 @@ export class World {
     document.body.appendChild(vrButton);
 
     renderer.setAnimationLoop((timestamp) => this.frame(timestamp));
+    this.enterVrIfInstalledApp();
+  }
+
+  /**
+   * When the game runs as the installed Quest app (a packaged PWA), launch straight into VR like
+   * any other headset game. Tapping the app icon counts as the user gesture WebXR needs.
+   * getDigitalGoodsService only exists inside a packaged app, so browsers keep the 2D page.
+   */
+  async enterVrIfInstalledApp() {
+    if (window.getDigitalGoodsService === undefined || !navigator.xr?.isSessionSupported) return;
+    try {
+      if (!(await navigator.xr.isSessionSupported('immersive-vr'))) return;
+      const session = await navigator.xr.requestSession('immersive-vr', {
+        optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking', 'layers'],
+      });
+      await this.renderer.xr.setSession(session);
+    } catch (err) {
+      console.warn('Could not start VR automatically; the Enter VR button still works.', err);
+    }
   }
 
   get isXR() {

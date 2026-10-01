@@ -5,3 +5,7 @@ dist
 turnCreds.txt
 .dev.vars
 .DS_Store
+quest/android
+quest/out
+*.keystore
+*.jks

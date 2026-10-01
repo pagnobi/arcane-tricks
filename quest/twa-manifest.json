@@ -1,0 +1,56 @@
+{
+  "packageId": "com.pagnobi.arcanetricks",
+  "applicationId": "0",
+  "host": "pagnobi.github.io",
+  "name": "Arcane Tricks",
+  "launcherName": "Arcane Tricks",
+  "display": "standalone",
+  "themeColor": "#0B0D1A",
+  "themeColorDark": "#000000",
+  "navigationColor": "#000000",
+  "navigationColorDark": "#000000",
+  "navigationDividerColor": "#000000",
+  "navigationDividerColorDark": "#000000",
+  "backgroundColor": "#0B0D1A",
+  "enableNotifications": false,
+  "enableMicrophone": false,
+  "enableXRScene": false,
+  "startUrl": "/arcane-tricks/",
+  "iconUrl": "https://pagnobi.github.io/arcane-tricks/icon-512.png",
+  "maskableIconUrl": "https://pagnobi.github.io/arcane-tricks/icon-maskable-512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "~/.arcane-tricks-signing/quest-release.keystore (passed by build.sh)",
+    "alias": "arcanetricks"
+  },
+  "appVersionName": "1",
+  "appVersionCode": 1,
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://pagnobi.github.io/arcane-tricks/manifest.webmanifest",
+  "fallbackType": "customtabs",
+  "features": {},
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": true,
+  "horizonOSAppMode": "immersive",
+  "fullScopeUrl": "https://pagnobi.github.io/arcane-tricks/",
+  "minSdkVersion": 21,
+  "orientation": "default",
+  "fingerprints": [
+    {
+      "name": "quest-release",
+      "value": "5E:F7:36:D4:0B:FC:44:A7:5F:52:C9:4C:0E:EB:DA:1A:A5:A2:53:8F:49:3A:26:5B:E4:CA:D0:72:D4:15:F1:4A"
+    }
+  ],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": [],
+  "protocolHandlers": [],
+  "fileHandlers": [],
+  "launchHandlerClientMode": "",
+  "displayOverride": [],
+  "appVersion": "1"
+}

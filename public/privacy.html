@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Arcane Tricks privacy policy</title>
+    <style>
+      body {
+        margin: 0;
+        background: #0b0d1a;
+        color: #e8e2cf;
+        font: 17px/1.6 system-ui, 'Segoe UI', sans-serif;
+      }
+      main {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 40px 16px 64px;
+      }
+      h1,
+      h2 {
+        font-family: Georgia, serif;
+        color: #f2c94c;
+      }
+      a {
+        color: #9fc3ff;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Arcane Tricks privacy policy</h1>
+      <p><em>Last updated: 29 September 2026</em></p>
+
+      <p>
+        Arcane Tricks is a card game you can play in a web browser or as an app on Meta Quest. It has no accounts and
+        no sign-in, and it does not show ads or use analytics. This page explains the little data the game handles.
+      </p>
+
+      <h2>Stored on your device</h2>
+      <p>
+        The game saves your chosen display name, your wizard's look, your settings (sound, VR height, house rules) and a
+        random ID used to give you your seat back if you drop out of an online game. These stay in your browser's local
+        storage on your device and are never sent to us. Clearing the site's data or uninstalling the app deletes them.
+      </p>
+
+      <h2>Online games</h2>
+      <p>When you host or join an online table:</p>
+      <ul>
+        <li>
+          Your display name, wizard look, game moves, emotes and (in VR) head and hand positions are sent to the other
+          players at the table, so they can see you play. Nothing is sent once you leave the table.
+        </li>
+        <li>
+          Players connect directly to each other (WebRTC). To set up that connection, your device's IP address is
+          shared with the other players' devices and with the connection services below.
+        </li>
+        <li>
+          A matchmaking service (PeerJS, <a href="https://peerjs.com">peerjs.com</a>) passes connection details between
+          players using the 4-letter room code.
+        </li>
+        <li>
+          If your networks block direct connections, the game's traffic is relayed through Cloudflare's TURN service
+          (<a href="https://www.cloudflare.com/privacypolicy/">Cloudflare privacy policy</a>), or PeerJS's relay if
+          Cloudflare's is unavailable. Relays forward the game's messages; we don't store them.
+        </li>
+      </ul>
+      <p>There is no text or voice chat. Emotes are a fixed set of preset phrases.</p>
+
+      <h2>What we don't do</h2>
+      <p>
+        We don't collect, sell or share personal information, we don't keep game history on a server, and we don't use
+        cookies or tracking. The game is not directed at children under 13.
+      </p>
+
+      <h2>Hosting</h2>
+      <p>
+        The game's files are served by GitHub Pages. Like any web host, GitHub may log basic request information such as
+        IP addresses (<a href="https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement">GitHub privacy statement</a>).
+      </p>
+
+      <h2>Contact</h2>
+      <p>
+        Questions or requests: open an issue at
+        <a href="https://github.com/pagnobi/arcane-tricks/issues">github.com/pagnobi/arcane-tricks/issues</a>.
+      </p>
+    </main>
+  </body>
+</html>

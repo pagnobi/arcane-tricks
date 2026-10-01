@@ -60,4 +60,9 @@ const app = new App({
 });
 app.run();
 
-if (import.meta.env.DEV) window.__arcane = { world, app, hud, cards, sound };
+if (import.meta.env.DEV) window.__arcane = { world, app, hud, cards, sound, avatars };
+
+// Installable app (Quest store package / "Install app" in browsers). Not in dev, where it would cache stale modules.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch((err) => console.warn('Service worker not registered', err));
+}
