@@ -1,4 +1,5 @@
 import { DEFAULT_LOOK, sanitizeLook } from './game/looks.js';
+import { SCENE_IDS } from './scene/scenery.js';
 
 // Working title. "Wizard" is a registered trademark of its publisher, so the game ships
 // under its own name — change it here (and in index.html / manifest) when you pick one.
@@ -46,7 +47,8 @@ export const DEFAULT_PREFS = {
   musicVolume: 0.5, // 0–1
   sfxVolume: 0.8, // 0–1
   vrPosture: 'seated', // 'seated' | 'standing'
-  headsetView: 'vr', // 'vr' (the wizard's tower) | 'passthrough' (your real room, on headsets that support it)
+  headsetView: 'vr', // 'vr' (the scene below) | 'passthrough' (your real room, on headsets that support it)
+  scene: 'tower', // the room around the table, just for you: 'tower' | 'forest' | 'sky' (see scene/scenery.js)
   name: null, // your display name at online tables (a random one is picked on first run)
   look: { ...DEFAULT_LOOK }, // your wizard's style + hat colour (see game/looks.js)
 };
@@ -60,6 +62,7 @@ export function loadPrefs() {
       const prefs = { ...DEFAULT_PREFS, ...JSON.parse(raw) };
       prefs.look = sanitizeLook(prefs.look);
       if (prefs.headsetView !== 'passthrough') prefs.headsetView = 'vr';
+      if (!SCENE_IDS.includes(prefs.scene)) prefs.scene = 'tower';
       return prefs;
     }
   } catch {

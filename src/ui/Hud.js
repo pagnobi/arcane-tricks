@@ -4,6 +4,7 @@ import { FONTS, POP_SECONDS, THEME, drawBidWon, drawPanelBackground, text, wrapp
 import { drawSuitGlyph } from '../scene/cardTextures.js';
 import { SUITS, SUIT_INFO } from '../game/cards.js';
 import { DESKTOP_EYE, EYE } from '../scene/layout.js';
+import { SCENES } from '../scene/scenery.js';
 import { DEFAULT_PREFS, GAME_TAGLINE } from '../config.js';
 import { CODE_LENGTH, EMOTES, NAME_CHAR, NAME_MAX, normalizeCode, sanitizeName } from '../net/protocol.js';
 import {
@@ -63,7 +64,7 @@ export class Hud {
     this.status = this.#makePanel(0.36, 0.176, STATUS_POS, (ctx, p) => this.#drawStatus(ctx, p));
     this.modal = this.#makePanel(0.7, 0.6, MODAL_POS, (ctx, p) => this.modalDraw?.(ctx, p));
     this.scorepad = this.#makePanel(0.62, 0.3, SCOREPAD_POS, (ctx, p) => this.#drawScorepad(ctx, p));
-    this.options = this.#makePanel(0.5, 0.66, SCOREPAD_POS, (ctx, p) => this.#drawOptions(ctx, p));
+    this.options = this.#makePanel(0.54, 0.75, SCOREPAD_POS, (ctx, p) => this.#drawOptions(ctx, p));
     // How to look around and play; shown with the Options menu (below it on desktop, beside it in VR).
     this.controls = this.#makePanel(0.8, 0.3, CONTROLS_VR_POS, (ctx, p) => this.#drawControls(ctx, p));
     this.menuPop = this.#makePanel(0.17, 0.16, STATUS_POS, (ctx, p) => this.#drawMenuPop(ctx, p));
@@ -123,7 +124,7 @@ export class Hud {
   #layoutHud() {
     const cam = this.world.camera;
     const xr = this.world.isXR;
-    const key = `${xr}|${this.world.xrButton.hidden}|${cam.aspect.toFixed(3)}|${cam.fov.toFixed(2)}|${this.scorepad.height}|${this.modal.width}x${this.modal.height}|${this.modalPlace}|${this.emotes.mesh.visible}`;
+    const key = `${xr}|${this.world.xrButton.hidden}|${cam.aspect.toFixed(3)}|${cam.fov.toFixed(2)}|${this.scorepad.height}|${this.modal.width}x${this.modal.height}|${this.modalPlace}|${this.emotes.mesh.visible}|${this.modal.mesh.visible}|${this.controls.mesh.visible}`;
     if (key === this.layoutKey) return;
     this.layoutKey = key;
 
@@ -196,6 +197,20 @@ export class Hud {
     const top = centreY - h / 2 - gap;
     const cScale = Math.max(0.01, Math.min(fit, (top + hh - margin) / controls.height, (0.62 * 2 * hw) / controls.width));
     pin(controls, cScale, 0, top - (controls.height * cScale) / 2, 11);
+
+    // Options sits top-right. In squarer windows it could reach over the centred menu (and the
+    // Controls box under it), so shrink it to fit the space beside them, but no smaller than
+    // 60% (very narrow screens just have to overlap).
+    if (this.modalPlace !== 'nearStatus') {
+      let reach = 0; // how far right of centre the centred panels go
+      if (modal.mesh.visible) reach = w / 2;
+      if (controls.mesh.visible) reach = Math.max(reach, (controls.width * cScale) / 2);
+      const room = hw - margin - gap - reach;
+      const oScale = Math.max(scale * 0.6, Math.min(scale, room / this.options.width));
+      const o = this.options.holder;
+      o.scale.setScalar(oScale);
+      o.position.set(hw - margin - (this.options.width * oScale) / 2, hh - margin - (this.options.height * oScale) / 2, -dist);
+    }
   }
 
   // ---------- modal plumbing ----------
@@ -518,15 +533,19 @@ export class Hud {
     text(ctx, note, W / 2, 482, { font: `19px ${FONTS.sans}`, fill: THEME.muted, maxWidth: W - 52 });
 
     segmented(520, 'Headset view', 'headsetView', [
-      ['vr', 'Tower'],
+      ['vr', 'Scene'],
       ['passthrough', 'My room'],
     ]);
     const inRoom = this.prefs.headsetView === 'passthrough';
     let viewNote;
-    if (!inRoom) viewNote = 'Play in the wizard’s tower. Choose My room to play in your real surroundings.';
+    if (!inRoom) viewNote = 'Play in the scene below. Choose My room to play in your real surroundings.';
     else if (xr || this.world.arSupported) viewNote = 'Your real room shows through, with a glass table, see-through cards and ghostly wizard heads.';
     else viewNote = 'Preview: in a headset like Meta Quest, your real room shows behind the glass table.';
     wrappedText(ctx, viewNote, W / 2, 606, W - 52, 26, { font: `20px ${FONTS.sans}`, fill: THEME.muted });
+
+    segmented(652, 'Scene', 'scene', SCENES.map((s) => [s.id, s.label]));
+    const sceneName = SCENES.find((s) => s.id === this.prefs.scene)?.name ?? '';
+    text(ctx, inRoom ? `${sceneName} (hidden while My room is on)` : sceneName, W / 2, 722, { font: `20px ${FONTS.sans}`, fill: THEME.muted, maxWidth: W - 52 });
   }
 
   /** Written instructions: how to look around and play, for the device you're on. */

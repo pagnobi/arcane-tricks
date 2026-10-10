@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { DESKTOP_EYE, DESKTOP_LOOK, TABLE_CENTER, TABLE_RADIUS, fitHeightOffset, nameplatePosition } from './layout.js';
+import { buildScene } from './scenery.js';
 
 /**
  * What must always fit on a desktop screen: every other player's nameplate (at its largest size),
@@ -56,9 +57,11 @@ export class World {
     this.timer = new THREE.Timer();
     this.timer.connect(document);
     this.elapsed = 0;
-    // Passthrough (mixed reality on Quest): your real room replaces the tower. `headsetView` is the
+    // Passthrough (mixed reality on Quest): your real room replaces the scene. `headsetView` is the
     // player's choice; `passthrough` is what's showing right now (only ever true inside a headset).
-    this.room = new THREE.Group(); // tower-only scenery, hidden in passthrough
+    this.scenery = {}; // scene id → built scene (see scenery.js), built the first time it's picked
+    this.sceneId = null;
+    this.room = null; // the current scene's group, hidden in passthrough
     this.woodTable = new THREE.Group();
     this.glassTable = new THREE.Group();
     this.headsetView = 'vr';
@@ -67,6 +70,8 @@ export class World {
     this.vrSupported = false;
     this.onPassthroughChange = [];
     this.buildEnvironment();
+    this.setScene('tower');
+    this.onUpdate((dt, t) => this.room?.visible && this.scenery[this.sceneId].update?.(dt, t));
 
     // VR posture. Seated = real floor (sit in a chair). Standing = the world shifts so your eyes
     // are at seated height, measured when you enter VR. Either can be re-fitted from Options.
@@ -161,11 +166,29 @@ export class World {
     }
   }
 
-  /** Show the tower (false) or let the real room show through (true). */
+  /** The room around the table: 'tower' | 'forest' | 'sky' (see scenery.js). A personal choice. */
+  setScene(id) {
+    if (id === this.sceneId) return;
+    if (this.room) this.room.visible = false;
+    this.scenery[id] ??= buildScene(id);
+    const scenery = this.scenery[id];
+    if (!scenery.group.parent) this.scene.add(scenery.group);
+    this.sceneId = id;
+    this.room = scenery.group;
+    this.room.visible = !this.passthrough;
+    this.background.set(scenery.background);
+    this.fog.color.set(scenery.fog[0]);
+    [this.fog.near, this.fog.far] = [scenery.fog[1], scenery.fog[2]];
+    this.hemi.color.set(scenery.hemi[0]);
+    this.hemi.groundColor.set(scenery.hemi[1]);
+    this.hemi.intensity = scenery.hemi[2];
+  }
+
+  /** Show the scene (false) or let the real room show through (true). */
   #setPassthrough(on) {
     if (on === this.passthrough) return;
     this.passthrough = on;
-    this.room.visible = !on;
+    if (this.room) this.room.visible = !on;
     this.woodTable.visible = !on;
     this.glassTable.visible = on;
     // A transparent clear colour is what lets the headset's cameras show through.
@@ -326,30 +349,22 @@ export class World {
     this.renderer.render(this.scene, this.camera);
   }
 
+  /** Lights, the table (wood, and glass for passthrough) and the floating candles; the room around it is the scene (see setScene). */
   buildEnvironment() {
     const s = this.scene;
-    const room = this.room;
     const woodTable = this.woodTable;
-    s.add(room, woodTable, this.glassTable);
+    s.add(woodTable, this.glassTable);
     this.glassTable.visible = false;
     const { x, y: top, z } = TABLE_CENTER;
 
-    s.add(new THREE.HemisphereLight(0xaab4ff, 0x2a1d12, 1.1));
+    this.hemi = new THREE.HemisphereLight(0xaab4ff, 0x2a1d12, 1.1); // recoloured per scene
+    s.add(this.hemi);
     const lamp = new THREE.PointLight(0xffd29a, 7, 0, 1.6);
     lamp.position.set(x, 2.3, z);
     s.add(lamp);
     const key = new THREE.DirectionalLight(0xffffff, 0.6);
     key.position.set(1, 3, 2);
     s.add(key);
-
-    const floor = new THREE.Mesh(new THREE.CircleGeometry(16, 64), new THREE.MeshStandardMaterial({ color: 0x16131f, roughness: 0.95 }));
-    floor.rotation.x = -Math.PI / 2;
-    room.add(floor);
-
-    const rug = new THREE.Mesh(new THREE.CircleGeometry(2.0, 64), new THREE.MeshStandardMaterial({ color: 0x4a1f33, roughness: 1 }));
-    rug.rotation.x = -Math.PI / 2;
-    rug.position.set(x, 0.003, z);
-    room.add(rug);
 
     const wood = new THREE.MeshStandardMaterial({ color: 0x5b3a22, roughness: 0.6 });
     const felt = new THREE.Mesh(
@@ -393,27 +408,6 @@ export class World {
     innerRing.rotation.x = -Math.PI / 2;
     innerRing.position.set(x, top - 0.011, z);
     this.glassTable.add(glass, glowRim, innerRing);
-
-    // Stone pillars in the gloom
-    const stone = new THREE.MeshStandardMaterial({ color: 0x2b2838, roughness: 0.9 });
-    for (let i = 0; i < 10; i++) {
-      const a = (i / 10) * Math.PI * 2;
-      const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, 5, 16), stone);
-      pillar.position.set(x + Math.sin(a) * 6, 2.5, z + Math.cos(a) * 6);
-      room.add(pillar);
-    }
-
-    // Starfield
-    const starPositions = [];
-    for (let i = 0; i < 900; i++) {
-      const theta = Math.random() * Math.PI * 2;
-      const phi = Math.acos(Math.random() * 0.9 + 0.1);
-      const r = 30 + Math.random() * 10;
-      starPositions.push(r * Math.sin(phi) * Math.cos(theta), r * Math.cos(phi), r * Math.sin(phi) * Math.sin(theta));
-    }
-    const starGeo = new THREE.BufferGeometry();
-    starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPositions, 3));
-    room.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xfff4d8, size: 0.12, fog: false })));
 
     // Floating candles
     const wax = new THREE.MeshStandardMaterial({ color: 0xefe4c8, roughness: 0.7 });

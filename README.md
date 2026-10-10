@@ -28,7 +28,12 @@ Point at any face-up card on the table and it lifts toward you so you can read i
 Seated uses your real floor, so sit in a chair and the table is at real table height. Standing measures
 your headset when you enter VR and raises the table to meet you. **Fit table to my height** re-measures at any time.
 
-**Headset view: Tower / My room.** *My room* is passthrough (mixed reality) on headsets that support it, such as
+**Scene: Tower / Forest / Sky.** The room around the table, just for you: a wizard's tower, a moonlit
+forest clearing with fireflies and glowing mushrooms, or a stone observatory above the clouds under a huge
+moon. Other players don't see your choice, and it doesn't affect the game. The scenes are built in code in
+`src/scene/scenery.js`, and each is only built the first time it's picked.
+
+**Headset view: Scene / My room.** *My room* is passthrough (mixed reality) on headsets that support it, such as
 Meta Quest. The game starts an `immersive-ar` session, so your real surroundings show through. The tower, floor and
 pillars disappear, the wooden table becomes a faint glass disc with a glowing rim, and the cards turn to see-through
 glass. The wizards become see-through floating heads (hat, face and beard; no robes or hands), so they don't block your

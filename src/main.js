@@ -29,6 +29,7 @@ function applyPrefs(prefs) {
   sound.configure(prefs);
   if (prefs.vrPosture !== world.posture) world.setPosture(prefs.vrPosture);
   world.setHeadsetView(prefs.headsetView);
+  world.setScene(prefs.scene);
 }
 hud.prefs = loadPrefs();
 if (!sanitizeName(hud.prefs.name)) hud.prefs = updatePrefs({ name: randomName() });
