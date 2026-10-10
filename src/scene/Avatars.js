@@ -209,12 +209,14 @@ export class Avatars {
       };
     }
     this.numPlayers = n;
+    this.world.setPlayerCount(n);
   }
 
   clear() {
     for (const child of [...this.group.children]) this.group.remove(child);
     this.seats = [];
     this.turnMarker.visible = false;
+    this.world.setPlayerCount(null); // back in the menus: frame for any table size
   }
 
   /** `tricks`: the "Won" count to show per seat (defaults to the view's). */

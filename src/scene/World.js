@@ -1,5 +1,23 @@
 import * as THREE from 'three';
-import { DESKTOP_EYE, DESKTOP_LOOK, TABLE_CENTER, TABLE_RADIUS, fitHeightOffset } from './layout.js';
+import { DESKTOP_EYE, DESKTOP_LOOK, TABLE_CENTER, TABLE_RADIUS, fitHeightOffset, nameplatePosition } from './layout.js';
+
+/**
+ * What must always fit on a desktop screen: every other player's nameplate (at its largest size),
+ * the far edge of the table and your own hand of cards. `n` = players at the table, or null for
+ * any table size (menus).
+ */
+function desktopContentPoints(n) {
+  const points = [];
+  for (const players of n ? [n] : [3, 4, 5, 6]) {
+    for (let seat = 1; seat < players; seat++) {
+      const p = nameplatePosition(seat, players);
+      for (const dx of [-0.26, 0.26]) for (const dy of [-0.12, 0.13]) points.push(p.clone().add(new THREE.Vector3(dx, dy, 0)));
+    }
+  }
+  for (const x of [-0.34, 0.34]) for (const y of [0.8, 0.95]) points.push(new THREE.Vector3(x, y, -0.12)); // your hand
+  points.push(TABLE_CENTER.clone().add(new THREE.Vector3(0, 0, -TABLE_RADIUS))); // far edge of the table
+  return points;
+}
 
 /** Renderer, camera rig, environment and the frame loop. */
 export class World {
@@ -27,6 +45,7 @@ export class World {
     const dir = DESKTOP_LOOK.clone().sub(DESKTOP_EYE);
     this.baseYaw = Math.atan2(-dir.x, -dir.z);
     this.basePitch = Math.atan2(dir.y, Math.hypot(dir.x, dir.z));
+    this.#frameContent();
     this.lookYaw = 0;
     this.lookPitch = 0;
     this.zoom = 1;
@@ -192,10 +211,48 @@ export class World {
   }
 
   /** Keep a wide horizontal view on desktop so every seat stays visible in narrow windows. */
+  /**
+   * Aim the desktop camera at the middle of everything that must be visible (nameplates above,
+   * your hand below), and note how far out that content reaches, as tangents in camera space.
+   */
+  #frameContent(n = null) {
+    const points = desktopContentPoints(n);
+    const yawOnly = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, this.baseYaw, 0)).invert();
+    let top = -Infinity;
+    let bottom = Infinity;
+    for (const p of points) {
+      const v = p.clone().sub(DESKTOP_EYE).applyQuaternion(yawOnly);
+      const elevation = Math.atan2(v.y, -v.z);
+      top = Math.max(top, elevation);
+      bottom = Math.min(bottom, elevation);
+    }
+    this.basePitch = (top + bottom) / 2;
+    const view = new THREE.Quaternion().setFromEuler(new THREE.Euler(this.basePitch, this.baseYaw, 0, 'YXZ')).invert();
+    this.contentTanX = 0;
+    this.contentTanY = 0;
+    for (const p of points) {
+      const v = p.clone().sub(DESKTOP_EYE).applyQuaternion(view);
+      this.contentTanX = Math.max(this.contentTanX, Math.abs(v.x) / -v.z);
+      this.contentTanY = Math.max(this.contentTanY, Math.abs(v.y) / -v.z);
+    }
+  }
+
+  /** Frame the desktop view for a table of `n` players (null: any size, e.g. in menus). */
+  setPlayerCount(n) {
+    if (n === this.framedFor) return;
+    this.framedFor = n;
+    this.#frameContent(n);
+    this.fitCamera();
+    if (!this.isXR) this.applyDesktopView();
+  }
+
+  /** Desktop: the narrowest view that still shows all the nameplates, the table and your hand. */
   fitCamera() {
     const aspect = window.innerWidth / window.innerHeight;
-    const hfov = THREE.MathUtils.degToRad(95);
-    const vfov = THREE.MathUtils.clamp(2 * Math.atan(Math.tan(hfov / 2) / aspect), THREE.MathUtils.degToRad(60), THREE.MathUtils.degToRad(80));
+    const margin = 1.08;
+    const tanY = Math.max(this.contentTanY, this.contentTanX / aspect) * margin;
+    // Very tall, narrow windows (phones held upright) would need a fisheye view; cap it there.
+    const vfov = Math.min(2 * Math.atan(tanY), THREE.MathUtils.degToRad(100));
     this.camera.aspect = aspect;
     this.camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(vfov / 2) / this.zoom));
     this.camera.updateProjectionMatrix();
