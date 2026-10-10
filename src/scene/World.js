@@ -19,6 +19,8 @@ function desktopContentPoints(n) {
   return points;
 }
 
+const XR_FEATURES = ['local-floor', 'bounded-floor', 'hand-tracking', 'layers'];
+
 /** Renderer, camera rig, environment and the frame loop. */
 export class World {
   constructor(container) {
@@ -44,8 +46,7 @@ export class World {
 
     const dir = DESKTOP_LOOK.clone().sub(DESKTOP_EYE);
     this.baseYaw = Math.atan2(-dir.x, -dir.z);
-    this.basePitch = Math.atan2(dir.y, Math.hypot(dir.x, dir.z));
-    this.#frameContent();
+    this.#frameContent(); // sets basePitch
     this.lookYaw = 0;
     this.lookPitch = 0;
     this.zoom = 1;
@@ -76,8 +77,8 @@ export class World {
     this.xrFrames = 0;
     renderer.xr.addEventListener('sessionstart', () => {
       this.xrFrames = 0;
-      // 'alpha-blend' (or 'additive') means the headset shows the real world behind our pixels.
       document.body.classList.remove('passthrough-preview');
+      // 'alpha-blend' (or 'additive') means the headset shows the real world behind our pixels.
       this.#setPassthrough(renderer.xr.getEnvironmentBlendMode() !== 'opaque');
       this.camera.position.set(0, 0, 0); // drop the desktop pose so it can't be mistaken for head height
       if (this.posture === 'standing') this.pendingFit = true;
@@ -131,9 +132,7 @@ export class World {
     await this.xrReady;
     const mode = this.headsetView === 'passthrough' && this.arSupported ? 'immersive-ar' : 'immersive-vr';
     if (mode === 'immersive-vr' && !this.vrSupported) return;
-    const session = await navigator.xr.requestSession(mode, {
-      optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking', 'layers'],
-    });
+    const session = await navigator.xr.requestSession(mode, { optionalFeatures: XR_FEATURES });
     await this.renderer.xr.setSession(session);
     this.#updateXrButton();
   }
@@ -186,12 +185,6 @@ export class World {
     this.#setPassthrough(preview);
   }
 
-  /** Dev/testing: force the passthrough look on or off. */
-  previewPassthrough(on) {
-    document.body.classList.toggle('passthrough-preview', on);
-    this.#setPassthrough(on);
-  }
-
   /**
    * When the game runs as the installed Quest app (a packaged PWA), launch straight into VR like
    * any other headset game. Tapping the app icon counts as the user gesture WebXR needs.
@@ -210,7 +203,6 @@ export class World {
     return this.renderer.xr.isPresenting;
   }
 
-  /** Keep a wide horizontal view on desktop so every seat stays visible in narrow windows. */
   /**
    * Aim the desktop camera at the middle of everything that must be visible (nameplates above,
    * your hand below), and note how far out that content reaches, as tangents in camera space.

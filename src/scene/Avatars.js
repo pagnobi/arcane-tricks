@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Panel } from '../ui/Panel.js';
-import { FONTS, THEME, drawBidWon, drawPanelBackground, roundRect, text } from '../ui/draw.js';
+import { FONTS, POP_SECONDS, THEME, drawBidWon, drawPanelBackground, roundRect, text } from '../ui/draw.js';
 import { EYE, nameplatePosition, seatAngle, seatFrame, seatPosition, turnMarkerPosition } from './layout.js';
 import { randomLook, resolveLook } from '../game/looks.js';
 
@@ -125,7 +125,13 @@ function drawBubble(ctx, panel) {
 }
 
 const GHOST_OPACITY = 0.5;
-const POP_SECONDS = 1.1;
+// Nameplate and speech-bubble sizes (metres) before scaling up for far seats; the bubble sits
+// BUBBLE_RISE above the nameplate's centre.
+const PLATE_W = 0.34;
+const PLATE_H = 0.152;
+const BUBBLE_W = 0.3;
+const BUBBLE_H = 0.1;
+const BUBBLE_RISE = 0.15;
 const _m = new THREE.Matrix4();
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
@@ -188,12 +194,11 @@ export class Avatars {
       // Far-away nameplates are drawn larger so they stay readable.
       const position = nameplatePosition(seat, n);
       const k = THREE.MathUtils.clamp(position.distanceTo(EYE) / 1.8, 1, 1.5);
-      const plate = new Panel({ width: 0.34 * k, height: 0.152 * k, ppm: 1000 / k, draw: drawNameplate });
+      const plate = new Panel({ width: PLATE_W * k, height: PLATE_H * k, ppm: 1000 / k, draw: drawNameplate });
       plate.mesh.position.copy(position);
       plate.mesh.userData.interactive = null; // display only
-      const bubble = new Panel({ width: 0.3 * k, height: 0.1 * k, ppm: 1000 / k, draw: drawBubble });
-      bubble.mesh.position.copy(position).add(new THREE.Vector3(0, 0.15 * k, 0));
-      bubble.mesh.visible = false;
+      const bubble = new Panel({ width: BUBBLE_W * k, height: BUBBLE_H * k, ppm: 1000 / k, draw: drawBubble });
+      bubble.mesh.visible = false; // positioned by #placeBubble when shown
       this.group.add(figure.root, plate.mesh, bubble.mesh, ...figure.hands);
       this.#applyGhost(figure);
       this.seats[seat] = {
@@ -282,14 +287,14 @@ export class Avatars {
    */
   #placeBubble(s) {
     const mesh = s.bubble.mesh;
-    mesh.position.copy(s.platePos).add(_v.set(0, 0.15 * s.k, 0));
+    mesh.position.copy(s.platePos).add(_v.set(0, BUBBLE_RISE * s.k, 0));
     if (this.world.isXR) return;
     const cam = this.world.camera;
-    const top = _v2.copy(mesh.position).add(_v.set(0, 0.05 * s.k, 0)).project(cam).y;
+    const top = _v2.copy(mesh.position).add(_v.set(0, (BUBBLE_H / 2) * s.k, 0)).project(cam).y;
     if (top <= 0.97) return;
     const right = _v.setFromMatrixColumn(cam.matrixWorld, 0).normalize();
     const side = _v2.copy(s.platePos).project(cam).x > 0 ? -1 : 1; // toward the screen centre
-    mesh.position.copy(s.platePos).addScaledVector(right, side * (0.34 + 0.3 + 0.03) * 0.5 * s.k);
+    mesh.position.copy(s.platePos).addScaledVector(right, side * ((PLATE_W + BUBBLE_W) / 2 + 0.015) * s.k);
   }
 
   /**

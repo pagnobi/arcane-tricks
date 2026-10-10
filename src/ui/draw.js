@@ -54,6 +54,9 @@ export function text(ctx, str, x, y, opts = {}) {
   ctx.fillText(str, x, y, maxWidth);
 }
 
+/** How long the Won count's pop lasts after a trick is won. */
+export const POP_SECONDS = 1.1;
+
 /**
  * "Bid 1 · Won 1", where the Won number can pop: `pop` runs 0→1 over the animation after a trick
  * is won. The number swells and turns green, then settles, while a "+1" floats up and fades.

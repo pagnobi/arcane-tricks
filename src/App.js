@@ -292,8 +292,6 @@ export class App {
         inLobby = false;
         this.poseSync.start((pose) => session.sendPose(pose));
       });
-      session.on('reconnecting', () => this.hud.flashMessage('Connection lost — reconnecting…', 6));
-      session.on('reconnected', () => this.hud.flashMessage('Reconnected!'));
       session.on('rejected', (reason) => finish({ kind: 'rejected', reason }));
       session.on('closed', () => finish({ kind: 'closed' }));
       session.on('lost', () => finish({ kind: 'lost' }));

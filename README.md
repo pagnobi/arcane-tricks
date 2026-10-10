@@ -24,7 +24,7 @@ The Controls panel also shows on its own when the game first opens; close it wit
 **VR controls:** point with a controller (or your hand) and pull the trigger (or pinch) to select.
 Point at any face-up card on the table and it lifts toward you so you can read it.
 
-**Options** (menu or status board): sound on/off, **Music** and **Effects** volume sliders, and **Seated / Standing** for VR.
+**Options** (home screen, Esc, or **Menu** on the status board): sound on/off, **Music** and **Effects** volume sliders, and **Seated / Standing** for VR.
 Seated uses your real floor, so sit in a chair and the table is at real table height. Standing measures
 your headset when you enter VR and raises the table to meet you. **Fit table to my height** re-measures at any time.
 
@@ -33,8 +33,7 @@ Meta Quest. The game starts an `immersive-ar` session, so your real surroundings
 pillars disappear, the wooden table becomes a faint glass disc with a glowing rim, and the cards turn to see-through
 glass. The wizards become see-through floating heads (hat, face and beard; no robes or hands), so they don't block your
 room, and the floating candles stay. Switching in the headset takes effect straight
-away, and the corner button then reads **Enter Passthrough**. To check the look on a desktop screen, use
-`__arcane.world.previewPassthrough(true)` in the dev console.
+away, and the corner button then reads **Enter Passthrough**. On a desktop screen, choosing *My room* previews the look.
 
 **Sound:** every effect is synthesized in code with Web Audio (`src/audio/Sound.js`), so there are no audio files
 to license. In VR the effects are spatialized, so a bot's card sounds like it comes from its seat.

@@ -34,12 +34,6 @@ export function shuffle(cards, rng = Math.random) {
   return a;
 }
 
-export function cardName(card) {
-  if (card.kind === 'wizard') return 'Wizard';
-  if (card.kind === 'jester') return 'Jester';
-  return `${card.rank} of ${SUIT_INFO[card.suit].name}`;
-}
-
 /** Display order: Wizards, then trump suit, then other suits (high to low), then Jesters. */
 export function sortHand(hand, trumpSuit) {
   const suitOrder = trumpSuit ? [trumpSuit, ...SUITS.filter((s) => s !== trumpSuit)] : SUITS;

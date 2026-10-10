@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Panel } from './Panel.js';
-import { FONTS, THEME, drawBidWon, drawPanelBackground, text, wrappedText } from './draw.js';
+import { FONTS, POP_SECONDS, THEME, drawBidWon, drawPanelBackground, text, wrappedText } from './draw.js';
 import { drawSuitGlyph } from '../scene/cardTextures.js';
 import { SUITS, SUIT_INFO } from '../game/cards.js';
 import { DESKTOP_EYE, EYE } from '../scene/layout.js';
@@ -27,6 +27,7 @@ const SCOREPAD_POS = new THREE.Vector3(0.52, 1.2, -0.4);
 const EMOTES_POS = new THREE.Vector3(-0.5, 1.24, -0.3);
 const CONTROLS_VR_POS = new THREE.Vector3(0.98, 1.2, -0.05);
 const SCOREPAD_ROUNDS = 6;
+const VR_BUTTON_PX = 64; // the page's Enter VR button, bottom-right, incl. its margin
 
 function suitBadge(ctx, suit, cx, cy, r) {
   ctx.beginPath();
@@ -40,15 +41,15 @@ function suitBadge(ctx, suit, cx, cy, r) {
 }
 
 /**
- * All in-world UI: modal prompts in front of the player, the status board and the score pad.
- * Prompts return promises the controller awaits.
+ * All in-world UI: modal prompts in front of the player, the status board (with its Menu popout),
+ * the score pad, Options and Controls, and the emote bar. Prompts return promises the controller
+ * awaits. In VR the panels float in the room; on desktop they're pinned to the screen.
  */
 export class Hud {
   constructor(world, pointer) {
     this.world = world;
     this.pointer = pointer;
     this.game = null;
-    this.message = '';
     this.pending = null;
     this.keyHandler = null;
     this.onQuit = null;
@@ -73,7 +74,6 @@ export class Hud {
     this.menuPop.mesh.renderOrder = 12;
     this.emotes = this.#makePanel(0.44, 0.1, EMOTES_POS, (ctx, p) => this.#drawEmotes(ctx, p));
     this.onEmote = null;
-    this.flash = null;
     this.roomCode = null;
     window.addEventListener('keydown', (e) => {
       // While typing a name or room code, every key is text — M must not toggle sound.
@@ -147,24 +147,26 @@ export class Hud {
     const dist = 0.5;
     const hh = dist * Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
     const hw = hh * cam.aspect;
-    // Status board: ~26% of screen height, but never wider than 28% of the screen (keeps the hand clear).
-    // Same text size as the original 0.44 × 0.3 board: ~26% of the screen height, ≤28% of its width.
-    const scale = Math.min((0.26 * 2 * hh) / 0.3, (0.28 * 2 * hw) / 0.44);
     const margin = 0.03 * hh;
-    for (const [panel, , sx, sy] of pinned) {
+    const gap = 0.02 * hh;
+    // Pin a panel to the camera: (x, y) is its centre on a plane `dist` in front of the eye.
+    const pin = (panel, scale, x, y, renderOrder) => {
       cam.add(panel.holder);
       panel.holder.quaternion.identity();
       panel.holder.scale.setScalar(scale);
-      panel.holder.position.set(
-        sx * (hw - margin - (panel.width * scale) / 2),
-        sy * (hh - margin - (panel.height * scale) / 2),
-        -dist,
-      );
+      panel.holder.position.set(x, y, -dist);
       panel.material.depthTest = false;
-      panel.mesh.renderOrder = 10;
+      panel.mesh.renderOrder = renderOrder;
+    };
+
+    // Corner panels keep the status board's original text size: ~26% of the screen height,
+    // and never wider than 28% of the screen (keeps your hand clear).
+    const scale = Math.min((0.26 * 2 * hh) / 0.3, (0.28 * 2 * hw) / 0.44);
+    for (const [panel, , sx, sy] of pinned) {
+      pin(panel, scale, sx * (hw - margin - (panel.width * scale) / 2), sy * (hh - margin - (panel.height * scale) / 2), 10);
     }
     // If the Enter VR button is showing (a headset is connected), keep the score pad above it.
-    if (!this.world.xrButton.hidden) this.scorepad.holder.position.y += (2 * hh * 64) / window.innerHeight;
+    if (!this.world.xrButton.hidden) this.scorepad.holder.position.y += (2 * hh * VR_BUTTON_PX) / window.innerHeight;
     // The emote bar sits just above the status board.
     this.emotes.holder.position.y += (this.status.height + 0.012) * scale;
 
@@ -173,47 +175,34 @@ export class Hud {
     const modal = this.modal;
     const natural = dist / MODAL_POS.distanceTo(DESKTOP_EYE);
     const fit = Math.min(natural, (0.94 * 2 * hw) / modal.width, (0.9 * 2 * hh) / modal.height);
-    cam.add(modal.holder);
-    modal.holder.quaternion.identity();
-    modal.holder.scale.setScalar(fit);
-    const centreY = Math.min(0.08 * hh, hh - (modal.height * fit) / 2);
-    modal.holder.position.set(0, centreY, -dist);
+    const w = modal.width * fit;
+    const h = modal.height * fit;
+    const centreY = Math.min(0.08 * hh, hh - h / 2);
     if (this.modalPlace === 'nearStatus') {
-      // The bid box sits directly on top of your status board, lined up with its left edge.
+      // The bid box sits on top of your status board (or the emote bar above it, online),
+      // lined up with the board's left edge.
       const st = this.status.holder;
-      const gap = 0.02 * hh;
-      const w = modal.width * fit;
-      const h = modal.height * fit;
+      const below = this.emotes.mesh.visible ? this.emotes : this.status;
       const x = st.position.x - (this.status.width * st.scale.x) / 2 + w / 2;
-      // Online games have the emote bar just above the board, so stack on top of that instead.
-      const below = this.emotes.mesh.visible ? this.emotes.holder : st;
-      const belowH = (this.emotes.mesh.visible ? this.emotes.height : this.status.height) * below.scale.y;
-      const y = below.position.y + belowH / 2 + gap + h / 2;
-      modal.holder.position.set(Math.min(Math.max(x, -hw + margin + w / 2), hw - margin - w / 2), Math.min(y, hh - margin - h / 2), -dist);
+      const y = below.holder.position.y + (below.height * below.holder.scale.y) / 2 + gap + h / 2;
+      pin(modal, fit, THREE.MathUtils.clamp(x, -hw + margin + w / 2, hw - margin - w / 2), Math.min(y, hh - margin - h / 2), 11);
+    } else {
+      pin(modal, fit, 0, centreY, 11);
     }
-    modal.material.depthTest = false;
-    modal.mesh.renderOrder = 11;
 
-    // Controls: centred under the dialog (the main popup), filling the space down to the bottom
+    // Controls: centred where a centred dialog would end, filling the space down to the bottom
     // edge, at the same size as dialogs and no wider than ~60% of the screen.
     const controls = this.controls;
-    const gap = 0.02 * hh;
-    const modalBottom = centreY - (modal.height * fit) / 2; // where a centred dialog would end
-    const room = modalBottom - gap - (-hh + margin);
-    const cScale = Math.max(0.01, Math.min(fit, room / controls.height, (0.62 * 2 * hw) / controls.width));
-    cam.add(controls.holder);
-    controls.holder.quaternion.identity();
-    controls.holder.scale.setScalar(cScale);
-    controls.holder.position.set(0, modalBottom - gap - (controls.height * cScale) / 2, -dist);
-    controls.material.depthTest = false;
-    controls.mesh.renderOrder = 11;
+    const top = centreY - h / 2 - gap;
+    const cScale = Math.max(0.01, Math.min(fit, (top + hh - margin) / controls.height, (0.62 * 2 * hw) / controls.width));
+    pin(controls, cScale, 0, top - (controls.height * cScale) / 2, 11);
   }
 
   // ---------- modal plumbing ----------
 
   #openModal({ width, height, draw, keys, ppm = 1000, textInput = false, place = 'center' }) {
     this.textInput = textInput;
-    this.modalPlace = place; // 'center', or 'nearStatus' (desktop: beside the status board)
+    this.modalPlace = place; // 'center', or 'nearStatus' (desktop: on top of the status board)
     this.modalDraw = draw;
     this.modal.setSize(width, height, ppm);
     this.modal.hoverId = null;
@@ -279,6 +268,7 @@ export class Hud {
     this.status.mesh.visible = false;
     this.scorepad.mesh.visible = false;
     this.options.mesh.visible = false;
+    this.controls.mesh.visible = false;
     this.emotes.mesh.visible = false;
     this.#closeModal();
     this.game = null;
@@ -293,13 +283,6 @@ export class Hud {
     this.yourTurn = on;
     document.body.classList.toggle('your-turn', on);
     if (this.status.mesh.visible) this.status.render();
-  }
-
-  /** Show a message on the status board for a moment, then go back to the current one. */
-  flashMessage(message, seconds = 2.5) {
-    this.flash = { message, until: performance.now() + seconds * 1000 };
-    this.status.render();
-    setTimeout(() => this.status.mesh.visible && this.status.render(), seconds * 1000 + 50);
   }
 
   #drawEmotes(ctx, p) {
@@ -326,17 +309,10 @@ export class Hud {
     if (this.scorepad.mesh.visible) this.#renderScorepad();
   }
 
-  setMessage(message) {
-    this.message = message;
-    this.status.render();
-  }
-
-  /**
-   * The compact status board: round and Menu, trump (centred), your bid (big) and your score.
-   */
+  /** Animate the status board's Won count after you take a trick (see drawBidWon). */
   #animateStatusPop(t) {
     if (this.statusPopStart === undefined) return;
-    this.status.pop = (t - this.statusPopStart) / 1.1;
+    this.status.pop = (t - this.statusPopStart) / POP_SECONDS;
     if (this.status.pop >= 1) {
       this.status.pop = 0;
       this.statusPopStart = undefined;
@@ -344,6 +320,7 @@ export class Hud {
     if (this.status.mesh.visible) this.status.render();
   }
 
+  /** The compact status board: round and Menu, trump (centred), your bid (big) and your score. */
   #drawStatus(ctx, p) {
     const game = this.game;
     if (!game) return;

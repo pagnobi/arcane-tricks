@@ -1,5 +1,3 @@
-import { SUIT_INFO } from '../game/cards.js';
-import { leadSuit } from '../game/rules.js';
 import { TableView } from '../game/views.js';
 import { TABLE_CENTER, seatPosition } from '../scene/layout.js';
 import { Aborted } from './TableHost.js';
@@ -66,8 +64,7 @@ export class Presenter {
   }
 
   emote(seat, emote) {
-    if (seat === 0) this.hud.flashMessage(`You: “${emote}”`);
-    else this.avatars.emote(seat, emote);
+    if (seat !== 0) this.avatars.emote(seat, emote);
     this.sound?.play('click', seat === 0 ? null : seatPosition(seat, this.view?.numPlayers ?? 3).setY(1.3), { volume: 0.6, rate: 1.4 });
   }
 
@@ -85,10 +82,6 @@ export class Presenter {
   async #step(promise) {
     await promise;
     this.#check();
-  }
-
-  #name(seat) {
-    return seat === 0 ? 'You' : this.view.players[seat].name;
   }
 
   #seatSound(seat) {
@@ -123,7 +116,6 @@ export class Presenter {
         if (event.type === 'snapshot') {
           this.hud.closeInfo();
           this.cards.restore(view);
-          this.hud.setMessage('Welcome back!');
         }
         this.#refresh();
         break;
@@ -135,29 +127,18 @@ export class Presenter {
       case 'round':
         this.hud.closeInfo();
         this.#refresh();
-        this.hud.setMessage(`Dealing round ${view.round}…`);
         this.cards.prepareRound();
         this.sound?.play('shuffle', TABLE_CENTER);
         await this.#step(this.cards.deal(view, this.speed));
         await this.#step(this.cards.revealTrump(view));
-        if (!view.trumpCard) {
-          this.hud.setMessage('Last round — every card is dealt, so there is no trump');
-          await this.#pause(1.4);
-        }
+        if (!view.trumpCard) await this.#pause(1.4); // last round: every card is dealt, so no trump
         break;
 
       case 'turn':
         this.#refresh({ thinking: event.seat === 0 ? null : event.seat });
-        if (event.seat !== 0) {
-          const who = this.#name(event.seat);
-          if (event.kind === 'trump') this.hud.setMessage(`A Wizard! ${who} is choosing trump…`);
-          else if (event.kind === 'bid') this.hud.setMessage(`${who} is bidding…`);
-          else this.hud.setMessage(`${who} is playing…`);
-        }
         break;
 
       case 'trumpChosen':
-        this.hud.setMessage(`${this.#name(event.seat)} chose ${SUIT_INFO[event.suit].name} as trump`);
         this.#refresh();
         await this.#step(this.cards.layoutHand(view, 0)); // re-sort with trump first
         await this.#pause(0.8);
@@ -167,15 +148,10 @@ export class Presenter {
         this.#refresh();
         break;
 
-      case 'bidsDone': {
-        const total = view.players.reduce((s, p) => s + p.bid, 0);
-        const tone = total > view.round ? 'over-bid' : total < view.round ? 'under-bid' : 'even';
-        const hidden = view.variants.blindBids;
-        this.hud.setMessage(`${hidden ? 'Bids revealed! ' : ''}${total} bid for ${view.round} trick${view.round === 1 ? '' : 's'} — ${tone}`);
+      case 'bidsDone':
         this.#refresh();
-        await this.#pause(hidden ? 1.8 : 1.2);
+        await this.#pause(view.variants.blindBids ? 1.8 : 1.2); // a moment to take in the bids
         break;
-      }
 
       case 'play':
         // The last card of a trick arrives with the trick already counted: keep showing the old
@@ -188,7 +164,6 @@ export class Presenter {
       case 'trick': {
         this.cards.glowTrickCard(event.winner);
         this.sound?.play(event.winner === 0 ? 'win' : 'trick', this.#seatSound(event.winner));
-        this.hud.setMessage(event.winner === 0 ? 'You win the trick!' : `${this.#name(event.winner)} wins the trick`);
         // Hold the winner's old "Won" count until the cards sweep to them, then count it up.
         this.#refresh({ winner: event.winner, heldTrick: event.winner });
         await this.#pause(1.4);
@@ -234,28 +209,20 @@ export class Presenter {
   }
 
   #ask(kind, data) {
-    const view = this.view;
     this.#refresh();
     if (kind === 'trump') {
-      this.hud.setMessage('A Wizard was turned up — choose trump');
       this.sound?.play('turn');
       return this.hud.chooseTrump();
     }
     if (kind === 'bid') {
-      this.hud.setMessage(view.isForeheadRound ? 'You can’t see your own card — bid by reading the others' : 'How many tricks will you take?');
       this.sound?.play('turn');
-      return this.hud.askBid(view, data.allowed);
+      return this.hud.askBid(this.view, data.allowed);
     }
     return this.#pickCard(new Set(data.legal));
   }
 
+  /** Light up the cards you may play and wait for a click on one. */
   #pickCard(legalIds) {
-    const view = this.view;
-    const hand = view.players[0].hand;
-    const lead = leadSuit(view.trick);
-    if (view.isForeheadRound) this.hud.setMessage('Your turn — play your hidden card');
-    else if (legalIds.size < hand.length && lead) this.hud.setMessage(`Your turn — follow ${SUIT_INFO[lead].name}, or play a Wizard/Jester`);
-    else this.hud.setMessage(view.trick.length ? 'Your turn — play a card' : 'Your lead — play any card');
     this.sound?.play('turn', null, { volume: 0.6 });
 
     return new Promise((resolve, reject) => {
