@@ -42,10 +42,29 @@ const hitMaterial = new THREE.MeshBasicMaterial({ visible: false });
 let backMaterial = null;
 const frontMaterials = new Map(); // card id → material, created on first use
 
+// Passthrough mode: cards turn to tinted glass so you can see your room through them, while the
+// numbers and symbols stay readable. Each face is single-sided, so a face never shows through
+// from behind (your forehead card stays hidden from you).
+const GLASS_OPACITY = 0.72;
+let glassCards = false;
+
+function applyGlass(m) {
+  m.transparent = glassCards;
+  m.opacity = glassCards ? GLASS_OPACITY : 1;
+  m.needsUpdate = true;
+}
+
+export function setGlassCards(on) {
+  glassCards = on;
+  for (const m of frontMaterials.values()) applyGlass(m);
+  if (backMaterial) applyGlass(backMaterial);
+}
+
 function frontMaterialFor(card) {
   let m = frontMaterials.get(card.id);
   if (!m) {
     m = new THREE.MeshBasicMaterial({ map: createCardFront(card), toneMapped: false });
+    applyGlass(m);
     frontMaterials.set(card.id, m);
   }
   return m;
@@ -70,7 +89,10 @@ const _inv = new THREE.Quaternion();
 class CardObject extends THREE.Group {
   constructor() {
     super();
-    backMaterial ??= new THREE.MeshBasicMaterial({ map: createCardBack(), toneMapped: false });
+    if (!backMaterial) {
+      backMaterial = new THREE.MeshBasicMaterial({ map: createCardBack(), toneMapped: false });
+      applyGlass(backMaterial);
+    }
     this.card = null;
     this.inner = new THREE.Group();
     this.add(this.inner);

@@ -1,7 +1,7 @@
 import { World } from './scene/World.js';
 import { Tweens } from './scene/Tweens.js';
 import { Pointer } from './scene/Pointer.js';
-import { CardTable } from './scene/CardTable.js';
+import { CardTable, setGlassCards } from './scene/CardTable.js';
 import { Avatars } from './scene/Avatars.js';
 import { Sound } from './audio/Sound.js';
 import { Hud } from './ui/Hud.js';
@@ -14,11 +14,13 @@ const world = new World(document.getElementById('app'));
 const tweens = new Tweens();
 world.onUpdate((dt) => tweens.update(dt));
 
+world.onPassthroughChange.push(setGlassCards);
 const pointer = new Pointer(world);
 const sound = new Sound(world);
 const cards = new CardTable(world, tweens, pointer);
 cards.sound = sound;
 const avatars = new Avatars(world);
+world.onPassthroughChange.push((on) => avatars.setGhost(on));
 const hud = new Hud(world, pointer);
 Panel.onButtonClick = () => sound.play('click', null, { volume: 0.5 });
 
@@ -26,6 +28,7 @@ Panel.onButtonClick = () => sound.play('click', null, { volume: 0.5 });
 function applyPrefs(prefs) {
   sound.configure(prefs);
   if (prefs.vrPosture !== world.posture) world.setPosture(prefs.vrPosture);
+  world.setHeadsetView(prefs.headsetView);
 }
 hud.prefs = loadPrefs();
 if (!sanitizeName(hud.prefs.name)) hud.prefs = updatePrefs({ name: randomName() });

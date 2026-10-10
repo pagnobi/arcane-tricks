@@ -17,11 +17,48 @@
         background: #0b0d1a;
         font-family: system-ui, 'Segoe UI', sans-serif;
       }
-      /* three.js positions this button itself; keep it in a corner, clear of your hand */
+      /* Enter VR / Enter Passthrough: in a corner, clear of your hand */
       #VRButton {
-        left: auto !important;
-        right: 16px !important;
-        bottom: 16px !important;
+        position: fixed;
+        right: 16px;
+        bottom: 16px;
+        padding: 12px 16px;
+        border: 1px solid #fff;
+        border-radius: 4px;
+        background: rgba(0, 0, 0, 0.1);
+        color: #fff;
+        font: 13px sans-serif;
+        text-align: center;
+        opacity: 0.6;
+        cursor: pointer;
+        z-index: 999;
+      }
+      #VRButton:hover {
+        opacity: 1;
+      }
+      #VRButton[hidden] {
+        display: none;
+      }
+      /* Desktop preview of passthrough ("My room"): a soft stand-in for the room behind the glass table */
+      body.passthrough-preview {
+        background: radial-gradient(ellipse at 50% 35%, #6d7890 0%, #4a4f60 45%, #2a2a33 100%);
+      }
+      /* Your turn: a soft gold glow pulsing around the edge of the screen */
+      body::after {
+        content: '';
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        box-shadow: inset 0 0 70px 14px rgba(242, 201, 76, 0.55);
+        opacity: 0;
+        transition: opacity 0.3s;
+      }
+      body.your-turn::after {
+        animation: your-turn 1.6s ease-in-out infinite;
+      }
+      @keyframes your-turn {
+        0%, 100% { opacity: 0.45; }
+        50% { opacity: 1; }
       }
       #hint {
         position: fixed;

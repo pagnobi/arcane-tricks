@@ -95,8 +95,14 @@ export class Presenter {
     return seat === 0 ? null : seatPosition(seat, this.view.numPlayers).setY(1.2);
   }
 
+  /**
+   * Redraw nameplates and the status board. `opts.tricks` overrides the "Won" counts shown;
+   * otherwise they're the view's, minus the trick held back for `opts.heldTrick`.
+   */
   #refresh(opts = {}) {
     const hideBids = this.view.variants.blindBids && this.view.phase === 'bidding';
+    if (!opts.tricks) opts = { ...opts, tricks: this.view.players.map((p, i) => p.tricks - (opts.heldTrick === i ? 1 : 0)) };
+    this.shownTricks = opts.tricks;
     this.avatars.refresh(this.view, opts);
     this.hud.setStatus(this.view, { ...opts, hideBids });
   }
@@ -172,7 +178,10 @@ export class Presenter {
       }
 
       case 'play':
-        this.#refresh();
+        // The last card of a trick arrives with the trick already counted: keep showing the old
+        // counts until the cards are swept to the winner (see 'trick').
+        if (event.order === view.numPlayers - 1 && this.shownTricks) this.#refresh({ tricks: this.shownTricks });
+        else this.#refresh();
         await this.#step(this.cards.playToTrick(view, event.seat, event.card, event.order));
         break;
 
@@ -180,8 +189,10 @@ export class Presenter {
         this.cards.glowTrickCard(event.winner);
         this.sound?.play(event.winner === 0 ? 'win' : 'trick', this.#seatSound(event.winner));
         this.hud.setMessage(event.winner === 0 ? 'You win the trick!' : `${this.#name(event.winner)} wins the trick`);
-        this.#refresh({ winner: event.winner });
+        // Hold the winner's old "Won" count until the cards sweep to them, then count it up.
+        this.#refresh({ winner: event.winner, heldTrick: event.winner });
         await this.#pause(1.4);
+        this.#refresh({ winner: event.winner });
         await this.#step(this.cards.collectTrick(event.winner, view.numPlayers));
         this.#refresh();
         break;
@@ -214,6 +225,15 @@ export class Presenter {
 
   async #prompt(kind, data) {
     this.#check();
+    this.hud.setYourTurn(true);
+    try {
+      return await this.#ask(kind, data);
+    } finally {
+      this.hud.setYourTurn(false);
+    }
+  }
+
+  #ask(kind, data) {
     const view = this.view;
     this.#refresh();
     if (kind === 'trump') {

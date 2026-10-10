@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Panel } from './Panel.js';
-import { FONTS, THEME, drawPanelBackground, text, wrappedText } from './draw.js';
+import { FONTS, THEME, drawBidWon, drawPanelBackground, text, wrappedText } from './draw.js';
 import { drawSuitGlyph } from '../scene/cardTextures.js';
 import { SUITS, SUIT_INFO } from '../game/cards.js';
 import { DESKTOP_EYE, EYE } from '../scene/layout.js';
@@ -25,6 +25,7 @@ const MODAL_POS = new THREE.Vector3(0, 1.12, -0.48);
 const STATUS_POS = new THREE.Vector3(-0.5, 1.02, -0.25);
 const SCOREPAD_POS = new THREE.Vector3(0.52, 1.2, -0.4);
 const EMOTES_POS = new THREE.Vector3(-0.5, 1.24, -0.3);
+const CONTROLS_VR_POS = new THREE.Vector3(0.98, 1.2, -0.05);
 const SCOREPAD_ROUNDS = 6;
 
 function suitBadge(ctx, suit, cx, cy, r) {
@@ -58,23 +59,49 @@ export class Hud {
     this.onFitHeight = null;
     this.heightNote = '';
 
-    this.status = this.#makePanel(0.44, 0.3, STATUS_POS, (ctx, p) => this.#drawStatus(ctx, p));
+    this.status = this.#makePanel(0.36, 0.176, STATUS_POS, (ctx, p) => this.#drawStatus(ctx, p));
     this.modal = this.#makePanel(0.7, 0.6, MODAL_POS, (ctx, p) => this.modalDraw?.(ctx, p));
     this.scorepad = this.#makePanel(0.62, 0.3, SCOREPAD_POS, (ctx, p) => this.#drawScorepad(ctx, p));
-    this.options = this.#makePanel(0.5, 0.52, SCOREPAD_POS, (ctx, p) => this.#drawOptions(ctx, p));
+    this.options = this.#makePanel(0.5, 0.66, SCOREPAD_POS, (ctx, p) => this.#drawOptions(ctx, p));
+    // How to look around and play; shown with the Options menu (below it on desktop, beside it in VR).
+    this.controls = this.#makePanel(0.8, 0.3, CONTROLS_VR_POS, (ctx, p) => this.#drawControls(ctx, p));
+    this.menuPop = this.#makePanel(0.17, 0.16, STATUS_POS, (ctx, p) => this.#drawMenuPop(ctx, p));
+    this.status.holder.add(this.menuPop.holder);
+    this.menuPop.holder.quaternion.identity();
+    this.menuPop.holder.position.set((this.status.width + this.menuPop.width) / 2 + 0.008, (this.status.height - this.menuPop.height) / 2, 0);
+    this.menuPop.material.depthTest = false;
+    this.menuPop.mesh.renderOrder = 12;
     this.emotes = this.#makePanel(0.44, 0.1, EMOTES_POS, (ctx, p) => this.#drawEmotes(ctx, p));
     this.onEmote = null;
     this.flash = null;
     this.roomCode = null;
     window.addEventListener('keydown', (e) => {
       // While typing a name or room code, every key is text — M must not toggle sound.
-      if (!this.textInput && (e.key === 'm' || e.key === 'M')) this.#setPref('sound', !this.prefs.sound);
-      else this.keyHandler?.(e);
+      if (!this.textInput && (e.key === 'm' || e.key === 'M')) {
+        this.#setPref('sound', !this.prefs.sound);
+        return;
+      }
+      if (e.key === 'Escape' && this.menuPop.mesh.visible) {
+        this.toggleMenuPop(false);
+        return;
+      }
+      if (e.key === 'Escape' && (this.options.mesh.visible || this.controls.mesh.visible)) {
+        this.closeMenu(); // Esc closes the menu (or the first-visit Controls) first
+        return;
+      }
+      const used = this.keyHandler?.(e) === true;
+      // Esc opens the menu (Options + Controls), unless an open dialog used it to go back or cancel.
+      if (e.key === 'Escape' && !used) this.toggleOptions();
     });
     world.onUpdate(() => this.#layoutHud());
+    world.onUpdate((dt, t) => this.#animateStatusPop(t));
     // The "fit height" button is only live in VR, so repaint when that changes.
-    world.renderer.xr.addEventListener('sessionstart', () => this.options.render());
-    world.renderer.xr.addEventListener('sessionend', () => this.options.render());
+    for (const event of ['sessionstart', 'sessionend']) {
+      world.renderer.xr.addEventListener(event, () => {
+        this.options.render();
+        this.controls.render();
+      });
+    }
   }
 
   #makePanel(width, height, position, draw) {
@@ -96,18 +123,18 @@ export class Hud {
   #layoutHud() {
     const cam = this.world.camera;
     const xr = this.world.isXR;
-    const key = `${xr}|${cam.aspect.toFixed(3)}|${cam.fov.toFixed(2)}|${this.scorepad.height}|${this.modal.width}x${this.modal.height}`;
+    const key = `${xr}|${this.world.xrButton.hidden}|${cam.aspect.toFixed(3)}|${cam.fov.toFixed(2)}|${this.scorepad.height}|${this.modal.width}x${this.modal.height}|${this.modalPlace}|${this.emotes.mesh.visible}`;
     if (key === this.layoutKey) return;
     this.layoutKey = key;
 
     const pinned = [
       [this.status, STATUS_POS, -1, -1],
-      [this.scorepad, SCOREPAD_POS, 1, 1],
+      [this.scorepad, SCOREPAD_POS, 1, -1], // bottom-right on desktop
       [this.options, SCOREPAD_POS, 1, 1],
       [this.emotes, EMOTES_POS, -1, -1],
     ];
     if (xr) {
-      for (const [panel, pos] of [...pinned, [this.modal, MODAL_POS]]) {
+      for (const [panel, pos] of [...pinned, [this.modal, MODAL_POS], [this.controls, CONTROLS_VR_POS]]) {
         this.world.scene.add(panel.holder);
         panel.holder.position.copy(pos);
         panel.holder.scale.setScalar(1);
@@ -121,7 +148,8 @@ export class Hud {
     const hh = dist * Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
     const hw = hh * cam.aspect;
     // Status board: ~26% of screen height, but never wider than 28% of the screen (keeps the hand clear).
-    const scale = Math.min((0.26 * 2 * hh) / this.status.height, (0.28 * 2 * hw) / this.status.width);
+    // Same text size as the original 0.44 × 0.3 board: ~26% of the screen height, ≤28% of its width.
+    const scale = Math.min((0.26 * 2 * hh) / 0.3, (0.28 * 2 * hw) / 0.44);
     const margin = 0.03 * hh;
     for (const [panel, , sx, sy] of pinned) {
       cam.add(panel.holder);
@@ -135,6 +163,8 @@ export class Hud {
       panel.material.depthTest = false;
       panel.mesh.renderOrder = 10;
     }
+    // If the Enter VR button is showing (a headset is connected), keep the score pad above it.
+    if (!this.world.xrButton.hidden) this.scorepad.holder.position.y += (2 * hh * 64) / window.innerHeight;
     // The emote bar sits just above the status board.
     this.emotes.holder.position.y += (this.status.height + 0.012) * scale;
 
@@ -146,15 +176,44 @@ export class Hud {
     cam.add(modal.holder);
     modal.holder.quaternion.identity();
     modal.holder.scale.setScalar(fit);
-    modal.holder.position.set(0, Math.min(0.08 * hh, hh - (modal.height * fit) / 2), -dist);
+    const centreY = Math.min(0.08 * hh, hh - (modal.height * fit) / 2);
+    modal.holder.position.set(0, centreY, -dist);
+    if (this.modalPlace === 'nearStatus') {
+      // The bid box sits directly on top of your status board, lined up with its left edge.
+      const st = this.status.holder;
+      const gap = 0.02 * hh;
+      const w = modal.width * fit;
+      const h = modal.height * fit;
+      const x = st.position.x - (this.status.width * st.scale.x) / 2 + w / 2;
+      // Online games have the emote bar just above the board, so stack on top of that instead.
+      const below = this.emotes.mesh.visible ? this.emotes.holder : st;
+      const belowH = (this.emotes.mesh.visible ? this.emotes.height : this.status.height) * below.scale.y;
+      const y = below.position.y + belowH / 2 + gap + h / 2;
+      modal.holder.position.set(Math.min(Math.max(x, -hw + margin + w / 2), hw - margin - w / 2), Math.min(y, hh - margin - h / 2), -dist);
+    }
     modal.material.depthTest = false;
     modal.mesh.renderOrder = 11;
+
+    // Controls: centred under the dialog (the main popup), filling the space down to the bottom
+    // edge, at the same size as dialogs and no wider than ~60% of the screen.
+    const controls = this.controls;
+    const gap = 0.02 * hh;
+    const modalBottom = centreY - (modal.height * fit) / 2; // where a centred dialog would end
+    const room = modalBottom - gap - (-hh + margin);
+    const cScale = Math.max(0.01, Math.min(fit, room / controls.height, (0.62 * 2 * hw) / controls.width));
+    cam.add(controls.holder);
+    controls.holder.quaternion.identity();
+    controls.holder.scale.setScalar(cScale);
+    controls.holder.position.set(0, modalBottom - gap - (controls.height * cScale) / 2, -dist);
+    controls.material.depthTest = false;
+    controls.mesh.renderOrder = 11;
   }
 
   // ---------- modal plumbing ----------
 
-  #openModal({ width, height, draw, keys, ppm = 1000, textInput = false }) {
+  #openModal({ width, height, draw, keys, ppm = 1000, textInput = false, place = 'center' }) {
     this.textInput = textInput;
+    this.modalPlace = place; // 'center', or 'nearStatus' (desktop: beside the status board)
     this.modalDraw = draw;
     this.modal.setSize(width, height, ppm);
     this.modal.hoverId = null;
@@ -215,12 +274,25 @@ export class Hud {
   }
 
   hideGameUi() {
+    this.setYourTurn(false);
+    this.menuPop.mesh.visible = false;
     this.status.mesh.visible = false;
     this.scorepad.mesh.visible = false;
     this.options.mesh.visible = false;
     this.emotes.mesh.visible = false;
     this.#closeModal();
     this.game = null;
+  }
+
+  /**
+   * It's your move (bid, trump or card): a gold glow pulses around the edge of the screen on
+   * desktop, and your status board gets a gold edge.
+   */
+  setYourTurn(on) {
+    if (on === !!this.yourTurn) return;
+    this.yourTurn = on;
+    document.body.classList.toggle('your-turn', on);
+    if (this.status.mesh.visible) this.status.render();
   }
 
   /** Show a message on the status board for a moment, then go back to the current one. */
@@ -244,6 +316,10 @@ export class Hud {
   }
 
   setStatus(game, opts = {}) {
+    // You just won a trick: animate your Won count (see #animateStatusPop).
+    const tricks = opts.tricks?.[0] ?? game?.players?.[0]?.tricks;
+    if (this.game && tricks > this.lastTricks) this.statusPopStart = this.world.elapsed;
+    this.lastTricks = tricks;
     this.game = game;
     this.statusOpts = opts;
     this.status.render();
@@ -255,73 +331,105 @@ export class Hud {
     this.status.render();
   }
 
+  /**
+   * The compact status board: round and Menu, trump (centred), your bid (big) and your score.
+   */
+  #animateStatusPop(t) {
+    if (this.statusPopStart === undefined) return;
+    this.status.pop = (t - this.statusPopStart) / 1.1;
+    if (this.status.pop >= 1) {
+      this.status.pop = 0;
+      this.statusPopStart = undefined;
+    }
+    if (this.status.mesh.visible) this.status.render();
+  }
+
   #drawStatus(ctx, p) {
     const game = this.game;
     if (!game) return;
     const W = p.pxWidth;
     const H = p.pxHeight;
-    drawPanelBackground(ctx, W, H);
-    text(ctx, `Round ${game.round} of ${game.totalRounds}`, 24, 38, { font: `bold 32px ${FONTS.serif}`, align: 'left', fill: THEME.gold });
-    const dealer = game.players[game.dealer];
-    const dealerText = dealer ? `Dealer: ${dealer.isHuman ? 'You' : dealer.name}` : '';
-    const line = this.roomCode ? `${dealerText} · Room ${this.roomCode}` : dealerText;
-    text(ctx, line, 24, 74, { font: `21px ${FONTS.sans}`, align: 'left', fill: THEME.muted, maxWidth: W - 150 });
+    drawPanelBackground(ctx, W, H, { radius: 22, highlight: this.yourTurn });
 
-    // Trump
-    if (game.trumpSuit) {
-      suitBadge(ctx, game.trumpSuit, 50, 136, 26);
-      text(ctx, 'Trump', 88, 120, { font: `19px ${FONTS.sans}`, align: 'left', fill: THEME.muted });
-      text(ctx, SUIT_INFO[game.trumpSuit].name, 88, 150, { font: `bold 27px ${FONTS.sans}`, align: 'left' });
-    } else {
-      text(ctx, 'Trump', 24, 120, { font: `19px ${FONTS.sans}`, align: 'left', fill: THEME.muted });
-      const label = game.phase === 'chooseTrump' ? 'Choosing…' : 'None';
-      text(ctx, label, 24, 150, { font: `bold 27px ${FONTS.sans}`, align: 'left' });
+    // Row 1: round (and room code online) · Menu (pops out Scores / Options / Quit beside the board)
+    const round = `Round ${game.round}/${game.totalRounds}`;
+    text(ctx, round, 20, 32, { font: `bold 28px ${FONTS.serif}`, align: 'left', fill: THEME.gold });
+    if (this.roomCode) {
+      ctx.font = `bold 28px ${FONTS.serif}`;
+      const x = 20 + ctx.measureText(round).width + 12;
+      text(ctx, this.roomCode, x, 33, { font: `bold 18px ${FONTS.sans}`, align: 'left', fill: THEME.muted, maxWidth: W - 120 - x - 10 });
     }
+    const menuOpen = this.menuPop.mesh.visible;
+    p.button('menu', { x: W - 16 - 104, y: 14, w: 104, h: 32 }, menuOpen ? 'Menu ◂' : 'Menu ▸', {
+      size: 18,
+      selected: menuOpen,
+      onClick: () => this.toggleMenuPop(),
+    });
 
-    // You
+    // Row 2: trump, large and centred
+    const trump = game.trumpSuit ? `${SUIT_INFO[game.trumpSuit].name} trump` : game.phase === 'chooseTrump' ? 'Trump: choosing…' : 'No trump';
+    ctx.font = `bold 26px ${FONTS.sans}`;
+    const badge = game.trumpSuit ? 44 : 0; // badge diameter + gap
+    const trumpW = Math.min(W - 40 - badge, ctx.measureText(trump).width);
+    const tx = (W - (badge + trumpW)) / 2;
+    if (game.trumpSuit) suitBadge(ctx, game.trumpSuit, tx + 18, 72, 18);
+    text(ctx, trump, tx + badge, 73, { font: `bold 26px ${FONTS.sans}`, align: 'left', maxWidth: trumpW });
+
+    // Row 3: your bid, big
     const me = game.players[0];
     const hidden = this.statusOpts?.hideBids && me.bid !== null;
-    const bidLine = me.bid === null ? 'Bid —' : `Bid ${me.bid} · Won ${me.tricks}`;
-    text(ctx, `You · Score ${me.score}`, 236, 120, { font: `19px ${FONTS.sans}`, align: 'left', fill: THEME.muted, maxWidth: W - 260 });
-    text(ctx, bidLine, 236, 150, { font: `bold 25px ${FONTS.sans}`, align: 'left', maxWidth: W - 260 });
-    if (hidden) text(ctx, '(hidden from others)', 236, 172, { font: `16px ${FONTS.sans}`, align: 'left', fill: THEME.muted });
+    const myTricks = this.statusOpts?.tricks?.[0] ?? me.tricks; // held back until the trick is swept over
+    if (me.bid === null) text(ctx, 'No bid yet', W / 2, 112, { font: `bold 31px ${FONTS.sans}`, maxWidth: W - 40 });
+    else drawBidWon(ctx, me.bid, myTricks, W / 2, 112, { font: `bold 31px ${FONTS.sans}`, align: 'center', pop: p.pop ?? 0, suffix: hidden ? ' (hidden)' : '' });
 
-    const buttonStyle = { size: 18 };
-    p.button('scores', { x: W - 120, y: 10, w: 100, h: 28 }, 'Scores', {
-      ...buttonStyle,
+    // Row 4: your score, centred
+    text(ctx, `Score ${me.score}`, W / 2, 150, { font: `bold 21px ${FONTS.sans}`, fill: THEME.muted });
+  }
+
+  // ---------- menu popout ----------
+
+  toggleMenuPop(open = !this.menuPop.mesh.visible) {
+    this.menuPop.mesh.visible = open;
+    this.quitArmedUntil = 0;
+    if (open) this.menuPop.render();
+    if (this.status.mesh.visible) this.status.render();
+  }
+
+  #drawMenuPop(ctx, p) {
+    const W = p.pxWidth;
+    const H = p.pxHeight;
+    drawPanelBackground(ctx, W, H, { radius: 20 });
+    const row = (i) => ({ x: 12, y: 12 + i * 46, w: W - 24, h: 40 });
+    p.button('scores', row(0), 'Scores', {
+      size: 20,
       selected: this.scorepad.mesh.visible,
-      onClick: () => this.toggleScorepad(),
+      onClick: () => {
+        this.toggleScorepad();
+        this.toggleMenuPop(false);
+      },
     });
-    p.button('options', { x: W - 120, y: 42, w: 100, h: 28 }, 'Options', {
-      ...buttonStyle,
+    p.button('options', row(1), 'Options', {
+      size: 20,
       selected: this.options.mesh.visible,
-      onClick: () => this.toggleOptions(),
+      onClick: () => {
+        this.toggleOptions();
+        this.toggleMenuPop(false);
+      },
     });
     const armed = performance.now() < this.quitArmedUntil;
-    p.button('quit', { x: W - 120, y: 74, w: 100, h: 28 }, armed ? 'Sure?' : 'Quit', {
-      ...buttonStyle,
+    p.button('quit', row(2), armed ? 'Sure? Click again' : 'Quit', {
+      size: armed ? 17 : 20,
       onClick: () => {
         if (performance.now() < this.quitArmedUntil) {
           this.quitArmedUntil = 0;
+          this.toggleMenuPop(false);
           this.onQuit?.();
         } else {
           this.quitArmedUntil = performance.now() + 3000;
-          this.status.render();
-          setTimeout(() => this.status.mesh.visible && this.status.render(), 3100);
+          this.menuPop.render();
+          setTimeout(() => this.menuPop.mesh.visible && this.menuPop.render(), 3100);
         }
       },
-    });
-
-    ctx.strokeStyle = 'rgba(201,165,76,0.35)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(20, 190);
-    ctx.lineTo(W - 20, 190);
-    ctx.stroke();
-    const flashing = this.flash && performance.now() < this.flash.until;
-    wrappedText(ctx, flashing ? this.flash.message : this.message, W / 2, 245, W - 44, 32, {
-      font: `bold 25px ${FONTS.sans}`,
-      fill: flashing ? THEME.good : THEME.gold,
     });
   }
 
@@ -331,6 +439,7 @@ export class Hud {
     this.scorepad.mesh.visible = !this.scorepad.mesh.visible;
     if (this.scorepad.mesh.visible) {
       this.options.mesh.visible = false; // they share a spot
+      this.controls.mesh.visible = false;
       this.#renderScorepad();
     }
     this.status.render();
@@ -338,11 +447,25 @@ export class Hud {
 
   // ---------- options ----------
 
+  /** Controls on their own: shown on the main menu when the game first opens. */
+  showControls() {
+    this.controls.mesh.visible = true;
+    this.controls.render();
+  }
+
+  /** Hide Options and Controls together. */
+  closeMenu() {
+    if (this.options.mesh.visible) this.toggleOptions();
+    this.controls.mesh.visible = false;
+  }
+
   toggleOptions() {
     this.options.mesh.visible = !this.options.mesh.visible;
+    this.controls.mesh.visible = this.options.mesh.visible;
     if (this.options.mesh.visible) {
       this.scorepad.mesh.visible = false;
       this.options.render();
+      this.controls.render();
     }
     if (this.status.mesh.visible) this.status.render();
     if (this.modal.mesh.visible) this.modal.render();
@@ -416,6 +539,52 @@ export class Hud {
     });
     const note = xr ? this.heightNote || 'Sit or stand naturally, look ahead, then press.' : 'Available once you enter VR.';
     text(ctx, note, W / 2, 482, { font: `19px ${FONTS.sans}`, fill: THEME.muted, maxWidth: W - 52 });
+
+    segmented(520, 'Headset view', 'headsetView', [
+      ['vr', 'Tower'],
+      ['passthrough', 'My room'],
+    ]);
+    const inRoom = this.prefs.headsetView === 'passthrough';
+    let viewNote;
+    if (!inRoom) viewNote = 'Play in the wizard’s tower. Choose My room to play in your real surroundings.';
+    else if (xr || this.world.arSupported) viewNote = 'Your real room shows through, with a glass table, see-through cards and ghostly wizard heads.';
+    else viewNote = 'Preview: in a headset like Meta Quest, your real room shows behind the glass table.';
+    wrappedText(ctx, viewNote, W / 2, 606, W - 52, 26, { font: `20px ${FONTS.sans}`, fill: THEME.muted });
+  }
+
+  /** Written instructions: how to look around and play, for the device you're on. */
+  #drawControls(ctx, p) {
+    const W = p.pxWidth;
+    const H = p.pxHeight;
+    drawPanelBackground(ctx, W, H);
+    const xr = this.world.isXR;
+    text(ctx, xr ? 'Controls (VR)' : 'Controls (PC)', 26, 44, { font: `bold 32px ${FONTS.serif}`, align: 'left', fill: THEME.gold });
+    const rows = xr
+      ? [
+          ['Look around', 'Turn your head. Lean in to read cards.'],
+          ['Select', 'Point and pull the trigger (or pinch).'],
+          ['Inspect a card', 'Point at a card on the table.'],
+          ['Your hand', 'Point at a card, then trigger to play it.'],
+          ['Table height', 'Options above: Seated / Standing, Fit table.'],
+          ['Menu', 'Options button on the board by your hand.'],
+        ]
+      : [
+          ['Move your head', 'Right-click and drag to look around.'],
+          ['Zoom', 'Mouse wheel zooms toward the cursor.'],
+          ['Inspect a card', 'Point at any card on the table.'],
+          ['Play / choose', 'Left-click a card or button.'],
+          ['Bid', 'Number keys, or click a number.'],
+          ['Keys', 'Enter: continue · M: mute · Esc: menu'],
+        ];
+    // Two columns of three: what to do (bold), then how (muted) underneath.
+    const colW = (W - 52) / 2;
+    rows.forEach(([label, how], i) => {
+      const x = 26 + Math.floor(i / 3) * (colW + 12);
+      const y = 88 + (i % 3) * 64;
+      text(ctx, label, x, y, { font: `bold 23px ${FONTS.sans}`, align: 'left' });
+      text(ctx, how, x, y + 27, { font: `21px ${FONTS.sans}`, align: 'left', fill: THEME.muted, maxWidth: colW - 12 });
+    });
+    p.button('close', { x: W - 146, y: 16, w: 120, h: 44 }, xr ? 'Close' : 'Close (Esc)', { size: 20, onClick: () => this.closeMenu() });
   }
 
   #renderScorepad() {
@@ -497,7 +666,10 @@ export class Hud {
         },
         keys: (e) => {
           if (e.key === 'Enter') start();
-          if (e.key === 'Escape') done(null);
+          if (e.key === 'Escape') {
+            done(null);
+            return true;
+          }
         },
       });
     });
@@ -571,7 +743,10 @@ export class Hud {
           }),
         keys: (e) => {
           if (e.key === 'Enter') join();
-          else if (e.key === 'Escape') done(null);
+          else if (e.key === 'Escape') {
+            done(null);
+            return true;
+          }
           else if (e.key === 'Backspace') code = code.slice(0, -1);
           else if (e.key.length === 1) code = normalizeCode(code + e.key);
           else return;
@@ -637,7 +812,10 @@ export class Hud {
           }),
         keys: (e) => {
           if (e.key === 'Enter') save();
-          else if (e.key === 'Escape') done(null);
+          else if (e.key === 'Escape') {
+            done(null);
+            return true;
+          }
           else if (e.key === 'Backspace') {
             name = name.slice(0, -1);
             shift = !name || name.endsWith(' ');
@@ -680,7 +858,10 @@ export class Hud {
           }),
         keys: (e) => {
           if (e.key === 'Enter') done(look);
-          if (e.key === 'Escape') done(null);
+          if (e.key === 'Escape') {
+            done(null);
+            return true;
+          }
         },
       });
     });
@@ -703,7 +884,10 @@ export class Hud {
         height: messageHeightPx(this.modal.ctx, { body, button }) / 1000,
         draw: (ctx, p) => drawMessage(ctx, p, { title, body, button, onOk: () => done() }),
         keys: (e) => {
-          if (e.key === 'Enter' || e.key === 'Escape') done();
+          if (e.key === 'Enter' || e.key === 'Escape') {
+            done();
+            return e.key === 'Escape';
+          }
         },
       });
     });
@@ -720,7 +904,10 @@ export class Hud {
       height: messageHeightPx(this.modal.ctx, { body, button }) / 1000,
       draw: (ctx, p) => drawMessage(ctx, p, { title, body, button, onOk: onButton }),
       keys: (e) => {
-        if (button && e.key === 'Escape') onButton?.();
+        if (button && e.key === 'Escape') {
+          onButton?.();
+          return true;
+        }
       },
     });
   }
@@ -732,8 +919,8 @@ export class Hud {
     for (let b = 0; b <= max; b++) if (!allowed.has(b)) forbidden.push(b);
     const cols = Math.min(max + 1, 7);
     const rows = Math.ceil((max + 1) / cols);
-    const gridTop = forbidden.length ? 190 : 158;
-    const heightPx = gridTop + rows * 70 + 18;
+    const gridTop = forbidden.length ? 132 : 104;
+    const heightPx = gridTop + rows * 70 + 10;
 
     // Tricks already called by the players before you (unknown while bids are hidden).
     const others = view.players.filter((pl) => pl.index !== 0 && pl.bid !== null);
@@ -750,19 +937,21 @@ export class Hud {
       calledText = `${called}/${max} tricks called so far`;
       if (called > max) calledText += ` (${called - max} over)`;
     }
+    // Just wide enough for the number buttons and the lines of text.
+    const widthPx = Math.min(560, Math.max(360, cols * 72 + 50, calledText.length * 13 + 60));
 
     return this.#prompt((done) => {
       this.#openModal({
-        width: 0.56,
+        place: 'nearStatus',
+        width: widthPx / 1000,
         height: heightPx / 1000,
         draw: (ctx, p) => {
           const W = p.pxWidth;
           drawPanelBackground(ctx, W, p.pxHeight);
-          text(ctx, 'Your bid', W / 2, 44, { font: `bold 38px ${FONTS.serif}`, fill: THEME.gold });
-          text(ctx, `How many of the ${max} trick${max === 1 ? '' : 's'} will you win?`, W / 2, 88, { font: `24px ${FONTS.sans}`, fill: THEME.muted });
-          text(ctx, calledText, W / 2, 128, { font: `bold 26px ${FONTS.sans}`, fill: calledColor });
+          text(ctx, 'Your bid', W / 2, 36, { font: `bold 36px ${FONTS.serif}`, fill: THEME.gold });
+          text(ctx, calledText, W / 2, 76, { font: `bold 25px ${FONTS.sans}`, fill: calledColor, maxWidth: W - 40 });
           if (forbidden.length) {
-            text(ctx, `Dealer rule: you can’t bid ${forbidden.join(', ')}`, W / 2, 162, { font: `bold 22px ${FONTS.sans}`, fill: THEME.bad });
+            text(ctx, `Dealer rule: you can’t bid ${forbidden.join(', ')}`, W / 2, 106, { font: `bold 21px ${FONTS.sans}`, fill: THEME.bad, maxWidth: W - 40 });
           }
           const x0 = (W - (cols * 72 - 10)) / 2;
           for (let b = 0; b <= max; b++) {

@@ -54,6 +54,35 @@ export function text(ctx, str, x, y, opts = {}) {
   ctx.fillText(str, x, y, maxWidth);
 }
 
+/**
+ * "Bid 1 · Won 1", where the Won number can pop: `pop` runs 0→1 over the animation after a trick
+ * is won. The number swells and turns green, then settles, while a "+1" floats up and fades.
+ */
+export function drawBidWon(ctx, bid, tricks, x, y, { font, fill = THEME.text, align = 'left', pop = 0, suffix = '' } = {}) {
+  const prefix = `Bid ${bid} · Won `;
+  const num = String(tricks);
+  ctx.font = font;
+  const pw = ctx.measureText(prefix).width;
+  const nw = ctx.measureText(num).width;
+  const sw = suffix ? ctx.measureText(suffix).width : 0;
+  const left = align === 'center' ? x - (pw + nw + sw) / 2 : x;
+  text(ctx, prefix, left, y, { font, fill, align: 'left' });
+  const active = pop > 0 && pop < 1;
+  const bump = active ? Math.sin(Math.PI * Math.min(1, pop * 1.4)) : 0; // up, then back down
+  ctx.save();
+  ctx.translate(left + pw + nw / 2, y);
+  ctx.scale(1 + 0.6 * bump, 1 + 0.6 * bump);
+  text(ctx, num, 0, 0, { font, fill: bump > 0.05 ? THEME.good : fill, align: 'center' });
+  ctx.restore();
+  if (suffix) text(ctx, suffix, left + pw + nw, y, { font, fill, align: 'left' });
+  if (active) {
+    ctx.save();
+    ctx.globalAlpha = 1 - pop;
+    text(ctx, '+1', left + pw + nw + sw + 12, y - 8 - 30 * pop, { font: `bold 26px ${FONTS.sans}`, fill: THEME.good, align: 'left' });
+    ctx.restore();
+  }
+}
+
 /** Split text into lines no wider than maxWidth in the given font. */
 export function wrapLines(ctx, str, maxWidth, font) {
   ctx.font = font;

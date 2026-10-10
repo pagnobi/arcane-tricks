@@ -109,12 +109,19 @@ export class App {
       let choice = 'join';
       if (!isValidCode(joinCode)) {
         joinCode = null;
+        // First visit to the main menu: show how to play until the player closes it.
+        if (!this.controlsShown) {
+          this.controlsShown = true;
+          this.hud.showControls();
+        }
         try {
           choice = await this.hud.showHome({ getName: this.getName, getLook: this.getLook });
         } catch {
           continue; // the menu was replaced by another panel — just show it again afterwards
         }
       }
+      // Starting or joining a game: put the menu and instructions away (Esc brings them back).
+      if (choice === 'solo' || choice === 'host' || choice === 'join') this.hud.closeMenu();
       if (choice === 'name') {
         const name = await this.hud.askName({ initial: this.getName(), randomName });
         if (name) this.setName(name);

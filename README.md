@@ -17,7 +17,9 @@ npm run build        # static site in dist/
 ```
 
 **Desktop controls:** click cards and buttons, hover a card on the table to inspect it, scroll to zoom
-(toward the cursor), right-drag to look around, number keys to bid, Enter to continue, **M** to mute.
+(toward the cursor), right-drag to look around, number keys to bid, Enter to continue, **M** to mute,
+**Esc** for the menu (Options, plus a Controls panel under the main window that explains all of this).
+The Controls panel also shows on its own when the game first opens; close it with its button or Esc.
 
 **VR controls:** point with a controller (or your hand) and pull the trigger (or pinch) to select.
 Point at any face-up card on the table and it lifts toward you so you can read it.
@@ -25,6 +27,14 @@ Point at any face-up card on the table and it lifts toward you so you can read i
 **Options** (menu or status board): sound on/off, **Music** and **Effects** volume sliders, and **Seated / Standing** for VR.
 Seated uses your real floor, so sit in a chair and the table is at real table height. Standing measures
 your headset when you enter VR and raises the table to meet you. **Fit table to my height** re-measures at any time.
+
+**Headset view: Tower / My room.** *My room* is passthrough (mixed reality) on headsets that support it, such as
+Meta Quest. The game starts an `immersive-ar` session, so your real surroundings show through. The tower, floor and
+pillars disappear, the wooden table becomes a faint glass disc with a glowing rim, and the cards turn to see-through
+glass. The wizards become see-through floating heads (hat, face and beard; no robes or hands), so they don't block your
+room, and the floating candles stay. Switching in the headset takes effect straight
+away, and the corner button then reads **Enter Passthrough**. To check the look on a desktop screen, use
+`__arcane.world.previewPassthrough(true)` in the dev console.
 
 **Sound:** every effect is synthesized in code with Web Audio (`src/audio/Sound.js`), so there are no audio files
 to license. In VR the effects are spatialized, so a bot's card sounds like it comes from its seat.

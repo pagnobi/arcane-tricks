@@ -1,11 +1,10 @@
 import * as THREE from 'three';
-import { VRButton } from 'three/addons/webxr/VRButton.js';
 import { DESKTOP_EYE, DESKTOP_LOOK, TABLE_CENTER, TABLE_RADIUS, fitHeightOffset } from './layout.js';
 
 /** Renderer, camera rig, environment and the frame loop. */
 export class World {
   constructor(container) {
-    const renderer = (this.renderer = new THREE.WebGLRenderer({ antialias: true }));
+    const renderer = (this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true }));
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -14,8 +13,10 @@ export class World {
     container.appendChild(renderer.domElement);
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x0b0d1a);
-    this.scene.fog = new THREE.Fog(0x0b0d1a, 7, 22);
+    this.background = new THREE.Color(0x0b0d1a);
+    this.fog = new THREE.Fog(0x0b0d1a, 7, 22);
+    this.scene.background = this.background;
+    this.scene.fog = this.fog;
 
     this.camera = new THREE.PerspectiveCamera(66, window.innerWidth / window.innerHeight, 0.03, 60);
     // The rig is the player's origin; in VR the headset and controllers move within it.
@@ -35,6 +36,16 @@ export class World {
     this.timer = new THREE.Timer();
     this.timer.connect(document);
     this.elapsed = 0;
+    // Passthrough (mixed reality on Quest): your real room replaces the tower. `headsetView` is the
+    // player's choice; `passthrough` is what's showing right now (only ever true inside a headset).
+    this.room = new THREE.Group(); // tower-only scenery, hidden in passthrough
+    this.woodTable = new THREE.Group();
+    this.glassTable = new THREE.Group();
+    this.headsetView = 'vr';
+    this.passthrough = false;
+    this.arSupported = false;
+    this.vrSupported = false;
+    this.onPassthroughChange = [];
     this.buildEnvironment();
 
     // VR posture. Seated = real floor (sit in a chair). Standing = the world shifts so your eyes
@@ -46,10 +57,15 @@ export class World {
     this.xrFrames = 0;
     renderer.xr.addEventListener('sessionstart', () => {
       this.xrFrames = 0;
+      // 'alpha-blend' (or 'additive') means the headset shows the real world behind our pixels.
+      document.body.classList.remove('passthrough-preview');
+      this.#setPassthrough(renderer.xr.getEnvironmentBlendMode() !== 'opaque');
       this.camera.position.set(0, 0, 0); // drop the desktop pose so it can't be mistaken for head height
       if (this.posture === 'standing') this.pendingFit = true;
     });
     renderer.xr.addEventListener('sessionend', () => {
+      this.#showDesktopView();
+      this.#updateXrButton();
       this.rig.position.y = 0;
       this.applyDesktopView();
     });
@@ -59,13 +75,102 @@ export class World {
       renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
-    const vrButton = VRButton.createButton(renderer, {
-      optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking', 'layers'],
-    });
-    document.body.appendChild(vrButton);
+    this.xrButton = document.createElement('button');
+    this.xrButton.id = 'VRButton';
+    this.xrButton.hidden = true; // only shown once we know a headset can be used
+    this.xrButton.addEventListener('click', () => (this.isXR ? renderer.xr.getSession()?.end() : this.enterXR()));
+    document.body.appendChild(this.xrButton);
+    this.xrReady = this.#checkXrSupport();
 
     renderer.setAnimationLoop((timestamp) => this.frame(timestamp));
     this.enterVrIfInstalledApp();
+  }
+
+  async #checkXrSupport() {
+    const supported = async (mode) => {
+      try {
+        return (await navigator.xr?.isSessionSupported(mode)) === true;
+      } catch {
+        return false;
+      }
+    };
+    [this.vrSupported, this.arSupported] = await Promise.all([supported('immersive-vr'), supported('immersive-ar')]);
+    this.#updateXrButton();
+  }
+
+  #updateXrButton() {
+    const b = this.xrButton;
+    const wantsPassthrough = this.headsetView === 'passthrough' && this.arSupported;
+    // No headset available (most PCs and phones): no button at all.
+    b.hidden = !this.vrSupported && !this.arSupported;
+    if (this.isXR) b.textContent = 'EXIT VR';
+    else b.textContent = wantsPassthrough ? 'ENTER PASSTHROUGH' : 'ENTER VR';
+  }
+
+  /** Start a headset session in the chosen view. Must run from a user gesture (click, tap, trigger). */
+  async enterXR() {
+    await this.xrReady;
+    const mode = this.headsetView === 'passthrough' && this.arSupported ? 'immersive-ar' : 'immersive-vr';
+    if (mode === 'immersive-vr' && !this.vrSupported) return;
+    const session = await navigator.xr.requestSession(mode, {
+      optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking', 'layers'],
+    });
+    await this.renderer.xr.setSession(session);
+    this.#updateXrButton();
+  }
+
+  /**
+   * Choose the headset view ('vr' | 'passthrough'). Inside a headset this switches straight away by
+   * starting a new session of the other kind, which works when called from a trigger press on a button.
+   * If the headset refuses, the choice still applies next time you enter.
+   */
+  async setHeadsetView(view) {
+    if (view === this.headsetView) return;
+    this.headsetView = view;
+    this.#updateXrButton();
+    const session = this.renderer.xr.getSession();
+    if (!session) {
+      this.#showDesktopView();
+      return;
+    }
+    if (this.passthrough === (view === 'passthrough')) return;
+    if (view === 'passthrough' && !this.arSupported) return;
+    try {
+      await session.end();
+      await this.enterXR();
+    } catch (err) {
+      console.warn('Could not switch the headset view; it applies next time you enter.', err);
+    }
+  }
+
+  /** Show the tower (false) or let the real room show through (true). */
+  #setPassthrough(on) {
+    if (on === this.passthrough) return;
+    this.passthrough = on;
+    this.room.visible = !on;
+    this.woodTable.visible = !on;
+    this.glassTable.visible = on;
+    // A transparent clear colour is what lets the headset's cameras show through.
+    this.scene.background = on ? null : this.background;
+    this.scene.fog = on ? null : this.fog;
+    this.renderer.setClearColor(0x000000, on ? 0 : 1);
+    for (const fn of this.onPassthroughChange) fn(on);
+  }
+
+  /**
+   * Outside a headset there's no camera to show through, so "My room" previews the look instead:
+   * glass table, see-through cards and ghost heads over a plain stand-in backdrop (body.passthrough-preview).
+   */
+  #showDesktopView() {
+    const preview = this.headsetView === 'passthrough';
+    document.body.classList.toggle('passthrough-preview', preview);
+    this.#setPassthrough(preview);
+  }
+
+  /** Dev/testing: force the passthrough look on or off. */
+  previewPassthrough(on) {
+    document.body.classList.toggle('passthrough-preview', on);
+    this.#setPassthrough(on);
   }
 
   /**
@@ -76,11 +181,7 @@ export class World {
   async enterVrIfInstalledApp() {
     if (window.getDigitalGoodsService === undefined || !navigator.xr?.isSessionSupported) return;
     try {
-      if (!(await navigator.xr.isSessionSupported('immersive-vr'))) return;
-      const session = await navigator.xr.requestSession('immersive-vr', {
-        optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking', 'layers'],
-      });
-      await this.renderer.xr.setSession(session);
+      await this.enterXR(); // in the player's chosen view: tower or passthrough
     } catch (err) {
       console.warn('Could not start VR automatically; the Enter VR button still works.', err);
     }
@@ -178,6 +279,10 @@ export class World {
 
   buildEnvironment() {
     const s = this.scene;
+    const room = this.room;
+    const woodTable = this.woodTable;
+    s.add(room, woodTable, this.glassTable);
+    this.glassTable.visible = false;
     const { x, y: top, z } = TABLE_CENTER;
 
     s.add(new THREE.HemisphereLight(0xaab4ff, 0x2a1d12, 1.1));
@@ -190,12 +295,12 @@ export class World {
 
     const floor = new THREE.Mesh(new THREE.CircleGeometry(16, 64), new THREE.MeshStandardMaterial({ color: 0x16131f, roughness: 0.95 }));
     floor.rotation.x = -Math.PI / 2;
-    s.add(floor);
+    room.add(floor);
 
     const rug = new THREE.Mesh(new THREE.CircleGeometry(2.0, 64), new THREE.MeshStandardMaterial({ color: 0x4a1f33, roughness: 1 }));
     rug.rotation.x = -Math.PI / 2;
     rug.position.set(x, 0.003, z);
-    s.add(rug);
+    room.add(rug);
 
     const wood = new THREE.MeshStandardMaterial({ color: 0x5b3a22, roughness: 0.6 });
     const felt = new THREE.Mesh(
@@ -203,20 +308,42 @@ export class World {
       new THREE.MeshStandardMaterial({ color: 0x1d5a3c, roughness: 0.95 }),
     );
     felt.position.set(x, top - 0.015, z);
-    s.add(felt);
+    woodTable.add(felt);
     const rim = new THREE.Mesh(new THREE.TorusGeometry(TABLE_RADIUS + 0.02, 0.035, 16, 96), wood);
     rim.rotation.x = Math.PI / 2;
     rim.position.set(x, top - 0.01, z);
-    s.add(rim);
+    woodTable.add(rim);
     const apron = new THREE.Mesh(new THREE.CylinderGeometry(TABLE_RADIUS, TABLE_RADIUS * 0.95, 0.1, 64), wood);
     apron.position.set(x, top - 0.08, z);
-    s.add(apron);
+    woodTable.add(apron);
     const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, top - 0.1, 24), wood);
     leg.position.set(x, (top - 0.1) / 2, z);
-    s.add(leg);
+    woodTable.add(leg);
     const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.4, 0.05, 32), wood);
     foot.position.set(x, 0.025, z);
-    s.add(foot);
+    woodTable.add(foot);
+
+    // Passthrough table: a faint glass disc with a glowing gold rim, so the cards seem to float
+    // over your real room (or your real table) without hiding it.
+    const glass = new THREE.Mesh(
+      new THREE.CircleGeometry(TABLE_RADIUS, 96),
+      new THREE.MeshBasicMaterial({ color: 0x9fd6ff, transparent: true, opacity: 0.1, depthWrite: false, side: THREE.DoubleSide }),
+    );
+    glass.rotation.x = -Math.PI / 2;
+    glass.position.set(x, top - 0.012, z);
+    const glowRim = new THREE.Mesh(
+      new THREE.TorusGeometry(TABLE_RADIUS, 0.006, 8, 128),
+      new THREE.MeshBasicMaterial({ color: 0xffd36b, transparent: true, opacity: 0.85, toneMapped: false }),
+    );
+    glowRim.rotation.x = Math.PI / 2;
+    glowRim.position.set(x, top - 0.01, z);
+    const innerRing = new THREE.Mesh(
+      new THREE.RingGeometry(TABLE_RADIUS * 0.42, TABLE_RADIUS * 0.425, 96),
+      new THREE.MeshBasicMaterial({ color: 0xffd36b, transparent: true, opacity: 0.35, toneMapped: false, depthWrite: false }),
+    );
+    innerRing.rotation.x = -Math.PI / 2;
+    innerRing.position.set(x, top - 0.011, z);
+    this.glassTable.add(glass, glowRim, innerRing);
 
     // Stone pillars in the gloom
     const stone = new THREE.MeshStandardMaterial({ color: 0x2b2838, roughness: 0.9 });
@@ -224,7 +351,7 @@ export class World {
       const a = (i / 10) * Math.PI * 2;
       const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, 5, 16), stone);
       pillar.position.set(x + Math.sin(a) * 6, 2.5, z + Math.cos(a) * 6);
-      s.add(pillar);
+      room.add(pillar);
     }
 
     // Starfield
@@ -237,7 +364,7 @@ export class World {
     }
     const starGeo = new THREE.BufferGeometry();
     starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPositions, 3));
-    s.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xfff4d8, size: 0.12, fog: false })));
+    room.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xfff4d8, size: 0.12, fog: false })));
 
     // Floating candles
     const wax = new THREE.MeshStandardMaterial({ color: 0xefe4c8, roughness: 0.7 });

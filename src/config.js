@@ -46,6 +46,7 @@ export const DEFAULT_PREFS = {
   musicVolume: 0.5, // 0–1
   sfxVolume: 0.8, // 0–1
   vrPosture: 'seated', // 'seated' | 'standing'
+  headsetView: 'vr', // 'vr' (the wizard's tower) | 'passthrough' (your real room, on headsets that support it)
   name: null, // your display name at online tables (a random one is picked on first run)
   look: { ...DEFAULT_LOOK }, // your wizard's style + hat colour (see game/looks.js)
 };
@@ -58,6 +59,7 @@ export function loadPrefs() {
     if (raw) {
       const prefs = { ...DEFAULT_PREFS, ...JSON.parse(raw) };
       prefs.look = sanitizeLook(prefs.look);
+      if (prefs.headsetView !== 'passthrough') prefs.headsetView = 'vr';
       return prefs;
     }
   } catch {

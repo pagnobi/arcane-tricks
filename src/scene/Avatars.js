@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Panel } from '../ui/Panel.js';
-import { FONTS, THEME, drawPanelBackground, roundRect, text } from '../ui/draw.js';
+import { FONTS, THEME, drawBidWon, drawPanelBackground, roundRect, text } from '../ui/draw.js';
 import { EYE, nameplatePosition, seatAngle, seatFrame, seatPosition, turnMarkerPosition } from './layout.js';
 import { randomLook, resolveLook } from '../game/looks.js';
 
@@ -78,7 +78,7 @@ export function makeWizardFigure(look) {
     hand.visible = false;
     return hand;
   });
-  return { root, head, hands, robeMaterial: robe };
+  return { root, head, hands, body: [body, collar, hem], robeMaterial: robe };
 }
 
 function drawNameplate(ctx, panel) {
@@ -87,7 +87,7 @@ function drawNameplate(ctx, panel) {
   const W = panel.pxWidth;
   const H = panel.pxHeight;
   drawPanelBackground(ctx, W, H, { radius: 20, highlight: s.isTurn });
-  text(ctx, s.name, 20, 36, { font: `bold 32px ${FONTS.serif}`, align: 'left', fill: THEME.gold, maxWidth: s.isDealer ? 200 : 300 });
+  text(ctx, s.name, 20, 34, { font: `bold 29px ${FONTS.serif}`, align: 'left', fill: THEME.gold, maxWidth: s.isDealer ? 200 : 300 });
   if (s.isDealer) {
     roundRect(ctx, W - 104, 16, 86, 36, 10);
     ctx.fillStyle = THEME.primary;
@@ -99,16 +99,15 @@ function drawNameplate(ctx, panel) {
   if (!s.connected) {
     line = 'Reconnecting…';
     color = THEME.bad;
-  } else if (s.flash) {
-    line = s.flash;
-    color = THEME.good;
-  } else if (s.thinking) line = 'Thinking…';
-  else if (s.bid === null) line = 'Bid —';
-  else if (s.bid === '?') line = 'Bid ✓ (hidden)';
-  else line = `Bid ${s.bid} · Won ${s.tricks}`;
-  text(ctx, line, 20, 80, { font: `26px ${FONTS.sans}`, align: 'left', fill: color });
-  text(ctx, `Score ${s.score}`, 20, 116, { font: `22px ${FONTS.sans}`, align: 'left', fill: THEME.muted });
-  if (s.tag) text(ctx, s.tag, W - 20, 116, { font: `bold 18px ${FONTS.sans}`, align: 'right', fill: THEME.muted });
+  } else if (s.bid === null) {
+    line = 'No bid yet';
+    color = THEME.muted;
+  } else if (s.bid === '?') line = 'Bid hidden';
+  // The bid and tricks won are what everyone watches, so they get the biggest type.
+  if (line) text(ctx, line, 20, 82, { font: `bold 38px ${FONTS.sans}`, align: 'left', fill: color, maxWidth: W - 40 });
+  else drawBidWon(ctx, s.bid, s.tricks, 20, 82, { font: `bold 38px ${FONTS.sans}`, pop: panel.pop ?? 0 });
+  text(ctx, `Score ${s.score}`, 20, 128, { font: `21px ${FONTS.sans}`, align: 'left', fill: THEME.muted });
+  if (s.tag) text(ctx, s.tag, W - 20, 128, { font: `bold 18px ${FONTS.sans}`, align: 'right', fill: THEME.muted });
 }
 
 function drawBubble(ctx, panel) {
@@ -125,7 +124,11 @@ function drawBubble(ctx, panel) {
   text(ctx, panel.state?.text ?? '', W / 2, (H - 22) / 2 + 2, { font: `bold 34px ${FONTS.sans}`, fill: '#2b2540', maxWidth: W - 30 });
 }
 
+const GHOST_OPACITY = 0.5;
+const POP_SECONDS = 1.1;
 const _m = new THREE.Matrix4();
+const _v = new THREE.Vector3();
+const _v2 = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 const _flip = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
 
@@ -150,6 +153,27 @@ export class Avatars {
     world.onUpdate((dt, t) => this.#update(dt, t));
   }
 
+  /**
+   * Passthrough mode: only the wizards' heads (hat, face and beard) show, as see-through ghosts,
+   * so they don't block your view of your room. Robes and hands are hidden.
+   */
+  setGhost(on) {
+    this.ghost = on;
+    for (const s of this.seats) if (s) this.#applyGhost(s.figure);
+  }
+
+  #applyGhost(figure) {
+    const on = !!this.ghost;
+    for (const part of figure.body) part.visible = !on;
+    if (on) for (const hand of figure.hands) hand.visible = false;
+    figure.head.traverse((obj) => {
+      if (!obj.material) return;
+      obj.material.transparent = on;
+      obj.material.opacity = on ? GHOST_OPACITY : 1;
+      obj.material.needsUpdate = true;
+    });
+  }
+
   setup(view, { multiplayer = false } = {}) {
     this.clear();
     const n = view.numPlayers;
@@ -164,18 +188,21 @@ export class Avatars {
       // Far-away nameplates are drawn larger so they stay readable.
       const position = nameplatePosition(seat, n);
       const k = THREE.MathUtils.clamp(position.distanceTo(EYE) / 1.8, 1, 1.5);
-      const plate = new Panel({ width: 0.34 * k, height: 0.14 * k, ppm: 1000 / k, draw: drawNameplate });
+      const plate = new Panel({ width: 0.34 * k, height: 0.152 * k, ppm: 1000 / k, draw: drawNameplate });
       plate.mesh.position.copy(position);
       plate.mesh.userData.interactive = null; // display only
       const bubble = new Panel({ width: 0.3 * k, height: 0.1 * k, ppm: 1000 / k, draw: drawBubble });
       bubble.mesh.position.copy(position).add(new THREE.Vector3(0, 0.15 * k, 0));
       bubble.mesh.visible = false;
       this.group.add(figure.root, plate.mesh, bubble.mesh, ...figure.hands);
+      this.#applyGhost(figure);
       this.seats[seat] = {
         figure,
         plate,
         bubble,
         bubbleUntil: 0,
+        k,
+        platePos: position.clone(),
         phase: Math.random() * 6,
         frame: seatFrame(seat, n),
         pose: null, // latest remote head/hands, already in our frame
@@ -190,24 +217,30 @@ export class Avatars {
     this.turnMarker.visible = false;
   }
 
-  refresh(view, { thinking = null, winner = null } = {}) {
+  /** `tricks`: the "Won" count to show per seat (defaults to the view's). */
+  refresh(view, { thinking = null, winner = null, tricks: shown = null } = {}) {
     for (let seat = 1; seat < view.numPlayers; seat++) {
       const p = view.players[seat];
       const s = this.seats[seat];
       if (!s) continue;
+      const tricks = shown?.[seat] ?? p.tricks;
       s.plate.state = {
         name: p.name,
         isDealer: view.dealer === seat,
         isTurn: view.turn === seat && view.phase !== 'roundOver' && view.phase !== 'gameOver',
-        thinking: thinking === seat,
-        flash: winner === seat ? 'Wins the trick!' : null,
         bid: p.bid,
-        tricks: p.tricks,
+        tricks,
         score: p.score,
         connected: p.connected !== false,
         tag: this.multiplayer ? (p.isBot ? 'BOT' : 'PLAYER') : null,
       };
+      // Just won a trick: animate the Won count (see #update).
+      if (s.lastTricks !== undefined && tricks > s.lastTricks) s.popStart = this.world.elapsed;
+      s.lastTricks = tricks;
       s.plate.render();
+      // "Thinking…" goes in the speech bubble above the sign, so the bid and tricks stay readable.
+      s.thinking = thinking === seat;
+      s.wonTrick = winner === seat;
     }
     const active = ['chooseTrump', 'bidding', 'playing'].includes(view.phase) && view.turn >= 0;
     this.turnMarker.visible = active;
@@ -218,10 +251,43 @@ export class Avatars {
   emote(seat, message) {
     const s = this.seats[seat];
     if (!s) return;
-    s.bubble.state = { text: message };
-    s.bubble.render();
-    s.bubble.mesh.visible = true;
+    s.emoteText = message;
     s.bubbleUntil = this.world.elapsed + EMOTE_SECONDS;
+  }
+
+  /**
+   * The speech bubble above the nameplate: an emote while it lasts, otherwise "Wins the trick!"
+   * or "Thinking…". The nameplate itself always shows the bid, tricks won and score.
+   */
+  #updateBubble(s, t) {
+    let message = null;
+    if (t <= s.bubbleUntil) message = s.emoteText;
+    else if (s.wonTrick) message = 'Wins the trick!';
+    else if (s.thinking) message = 'Thinking…';
+    if (message !== s.bubble.state?.text) {
+      s.bubble.state = { text: message };
+      if (message) s.bubble.render();
+    }
+    s.bubble.mesh.visible = !!message;
+    if (!message) return;
+    this.#placeBubble(s);
+    s.bubble.mesh.lookAt(this.cameraPos);
+  }
+
+  /**
+   * Above the nameplate. On a desktop screen the side players' nameplates sit near the top edge,
+   * so if the bubble would be cut off there, it moves beside the nameplate (toward the middle).
+   */
+  #placeBubble(s) {
+    const mesh = s.bubble.mesh;
+    mesh.position.copy(s.platePos).add(_v.set(0, 0.15 * s.k, 0));
+    if (this.world.isXR) return;
+    const cam = this.world.camera;
+    const top = _v2.copy(mesh.position).add(_v.set(0, 0.05 * s.k, 0)).project(cam).y;
+    if (top <= 0.97) return;
+    const right = _v.setFromMatrixColumn(cam.matrixWorld, 0).normalize();
+    const side = _v2.copy(s.platePos).project(cam).x > 0 ? -1 : 1; // toward the screen centre
+    mesh.position.copy(s.platePos).addScaledVector(right, side * (0.34 + 0.3 + 0.03) * 0.5 * s.k);
   }
 
   /**
@@ -255,7 +321,7 @@ export class Avatars {
         figure.head.quaternion.slerp(rootQ.invert().multiply(s.pose.quat), k);
         figure.hands.forEach((hand, i) => {
           const target = s.pose.hands[i];
-          hand.visible = !!target;
+          hand.visible = !!target && !this.ghost;
           if (target) hand.position.lerp(target, k);
         });
       } else {
@@ -264,9 +330,14 @@ export class Avatars {
         figure.hands.forEach((hand) => (hand.visible = false));
       }
       s.plate.mesh.lookAt(this.cameraPos);
-      if (s.bubble.mesh.visible) {
-        s.bubble.mesh.lookAt(this.cameraPos);
-        if (t > s.bubbleUntil) s.bubble.mesh.visible = false;
+      this.#updateBubble(s, t);
+      if (s.popStart !== undefined) {
+        s.plate.pop = (t - s.popStart) / POP_SECONDS;
+        if (s.plate.pop >= 1) {
+          s.plate.pop = 0;
+          s.popStart = undefined;
+        }
+        s.plate.render();
       }
     }
     this.turnMarker.material.opacity = 0.55 + Math.sin(t * 4) * 0.35;
