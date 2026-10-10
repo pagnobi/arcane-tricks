@@ -72,9 +72,10 @@ export class TableHost extends Emitter {
     };
   }
 
+  /** Change the rules: in the lobby (shown to everyone), or between games for a rematch. */
   updateSettings(settings) {
     this.settings = { ...this.settings, ...settings };
-    this.#lobbyChanged();
+    if (!this.started) this.#lobbyChanged(); // once playing, guests just see the next game
   }
 
   #lobbyChanged() {
@@ -176,16 +177,46 @@ export class TableHost extends Emitter {
 
   async start() {
     const humans = this.seats.length;
+    this.#addBots(Math.min(MAX_PLAYERS, Math.max(this.settings.numPlayers, humans, 3)));
+    this.started = true;
+    // Lobby tolerates long silences (people off sharing the code); mid-game, notice drops sooner.
+    if (this.net && 'idleTimeoutMs' in this.net) this.net.idleTimeoutMs = HOST_GAME_TIMEOUT_MS;
+    await this.#play();
+  }
+
+  /**
+   * Another game at the same table, with the current settings (see updateSettings). Anyone who
+   * has dropped out by now is replaced by a bot (keeping their name), so the game isn't held up.
+   * If the player count changed, bots join or leave; people are never removed.
+   */
+  async rematch() {
+    for (const s of this.seats) {
+      if (s.kind === 'remote' && !s.connected) {
+        s.kind = 'bot';
+        s.connected = true;
+      }
+    }
+    const humans = this.seats.filter((s) => s.kind !== 'bot').length;
     const n = Math.min(MAX_PLAYERS, Math.max(this.settings.numPlayers, humans, 3));
+    while (this.seats.length > n) {
+      const lastBot = this.seats.findLastIndex((s) => s.kind === 'bot');
+      this.seats.splice(lastBot, 1);
+    }
+    this.#addBots(n);
+    await this.#play();
+  }
+
+  /** Fill empty seats with bots, up to `n` players. */
+  #addBots(n) {
     const taken = new Set(this.seats.map((s) => s.name));
     const botNames = shuffle(BOT_NAMES.filter((name) => !taken.has(name)), this.rng);
     while (this.seats.length < n) {
       this.seats.push({ kind: 'bot', name: botNames.pop() ?? `Bot ${this.seats.length}`, look: randomLook(this.rng), connected: true });
     }
+  }
 
-    this.started = true;
-    // Lobby tolerates long silences (people off sharing the code); mid-game, notice drops sooner.
-    if (this.net && 'idleTimeoutMs' in this.net) this.net.idleTimeoutMs = HOST_GAME_TIMEOUT_MS;
+  async #play() {
+    const n = this.seats.length;
     this.game = new Game({
       players: this.seats.map((s) => ({ name: s.name })),
       variants: {

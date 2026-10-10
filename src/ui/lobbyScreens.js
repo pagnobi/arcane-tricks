@@ -52,7 +52,7 @@ export function drawRules(ctx, p, s, { x, y, w, humans = 1, onChange }) {
   });
 }
 
-export function drawHome(ctx, p, { name, look, onPick, onRename, onWizard, onOptions, optionsOpen }) {
+export function drawHome(ctx, p, { name, look, onPick, onRename, onWizard, onOptions, onStats, optionsOpen }) {
   const W = p.pxWidth;
   const H = p.pxHeight;
   drawPanelBackground(ctx, W, H);
@@ -71,11 +71,12 @@ export function drawHome(ctx, p, { name, look, onPick, onRename, onWizard, onOpt
   p.button('join', { x: bx, y: 416, w: 440, h: 64 }, 'Join a table', { size: 26, onClick: () => onPick('join') });
 
   p.button('options', { x: 40, y: H - 76, w: 140, h: 52 }, 'Options', { size: 22, selected: optionsOpen, onClick: onOptions });
+  p.button('stats', { x: 192, y: H - 76, w: 120, h: 52 }, 'Stats', { size: 22, onClick: onStats });
   text(ctx, 'Online: share a 4-letter room code with friends', W - 40, H - 50, {
     font: `19px ${FONTS.sans}`,
     align: 'right',
     fill: THEME.muted,
-    maxWidth: W - 240,
+    maxWidth: W - 372,
   });
 }
 

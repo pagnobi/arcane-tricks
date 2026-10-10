@@ -9,7 +9,10 @@ const RECONNECT_FOR_MS = 90000;
  * host's prompts, and — if the connection drops — keeps retrying with the same clientId so the host
  * gives this player their seat (and hand) back.
  *
- * Emits: lobby(info) · started · rejected(reason) · closed · reconnecting · reconnected · lost · ended
+ * After a game ends the player stays at the table: the host may start a rematch (a new 'game'
+ * event), or leave, which closes the table.
+ *
+ * Emits: lobby(info) · started · rejected(reason) · closed · reconnecting · reconnected · lost
  */
 export class ClientSession extends Emitter {
   constructor({ createNet, presenter, clientId, name, look = null, reconnectEveryMs = RECONNECT_EVERY_MS, replyTimeoutMs = REPLY_TIMEOUT_MS }) {
@@ -26,7 +29,7 @@ export class ClientSession extends Emitter {
     this.code = null;
     this.promptId = null;
     this.closed = false;
-    this.finished = false; // game over — the host going away now is expected
+    this.finished = false; // game over: waiting to see if the host starts a rematch
   }
 
   /**
@@ -81,20 +84,18 @@ export class ClientSession extends Emitter {
         break;
       case 'closed':
         this.closed = true;
-        if (!this.finished) this.emit('closed'); // after game over the host leaving is expected
+        this.emit('closed');
         break;
       case 'event':
         if (msg.event?.type === 'game' || msg.event?.type === 'snapshot') this.emit('started');
+        if (msg.event?.type === 'game') this.finished = false; // a new game, or a rematch
         if (msg.event?.type === 'gameEnd') this.finished = true;
         if (msg.event?.type === 'snapshot' && this.promptId !== null) {
           // Reconnected mid-decision: drop the stale prompt; the host re-sends it.
           this.presenter.cancelPrompts?.();
           this.promptId = null;
         }
-        this.presenter.handle(msg.event).then(
-          () => msg.event?.type === 'gameEnd' && this.emit('ended'),
-          () => {},
-        );
+        this.presenter.handle(msg.event).catch(() => {});
         break;
       case 'prompt':
         this.#onPrompt(msg);
@@ -125,7 +126,13 @@ export class ClientSession extends Emitter {
   }
 
   async #onLost(net) {
-    if (this.closed || this.finished || net !== this.net) return;
+    if (this.closed || net !== this.net) return;
+    if (this.finished) {
+      // The game was over and the host has gone: the table is closed.
+      this.closed = true;
+      this.emit('closed');
+      return;
+    }
     this.net = null;
     this.emit('reconnecting');
     const giveUpAt = Date.now() + RECONNECT_FOR_MS;

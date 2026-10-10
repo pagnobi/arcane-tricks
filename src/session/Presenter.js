@@ -25,6 +25,8 @@ export class Presenter {
     this.queue = Promise.resolve();
     this.aborted = false;
     this.pendingPick = null;
+    this.onGameEnd = null; // (view, { multiplayer }) → highlights for the results screen (records stats)
+    this.endChoice = null; // after a game: 'rematch' | 'menu' (host and solo only)
   }
 
   /** Start fresh for a new table. */
@@ -111,6 +113,7 @@ export class Presenter {
       case 'snapshot':
         this.speed = event.speed ?? 1;
         this.multiplayer = !!event.multiplayer;
+        this.hud.closeInfo(); // a guest's results screen, when the host starts a rematch
         this.avatars.setup(view, { multiplayer: this.multiplayer });
         this.hud.showGameUi(view, { multiplayer: this.multiplayer, code: event.code });
         if (event.type === 'snapshot') {
@@ -190,7 +193,12 @@ export class Presenter {
       case 'gameEnd': {
         const [top] = view.standings();
         this.sound?.play(top.isHuman ? 'fanfare' : 'bad');
-        await this.hud.showSummary(view, { final: true });
+        const highlights = this.onGameEnd?.(view, { multiplayer: this.multiplayer }) ?? [];
+        this.endChoice = null;
+        // Guests wait at the table for the host to start a rematch (or leave), so their results
+        // screen doesn't block the next events.
+        if (this.role === 'guest') this.hud.showSummary(view, { final: true, waiting: true, highlights });
+        else this.endChoice = await this.hud.showSummary(view, { final: true, highlights });
         break;
       }
     }

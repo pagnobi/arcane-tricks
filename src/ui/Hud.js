@@ -600,7 +600,7 @@ export class Hud {
 
   // ---------- menus & lobby ----------
 
-  /** Home screen. Resolves 'solo' | 'host' | 'join' | 'name'. */
+  /** Home screen. Resolves 'solo' | 'host' | 'join' | 'name' | 'wizard' | 'stats'. */
   showHome({ getName, getLook }) {
     return this.#prompt((done) => {
       this.#openModal({
@@ -614,6 +614,7 @@ export class Hud {
             onRename: () => done('name'),
             onWizard: () => done('wizard'),
             onOptions: () => this.toggleOptions(),
+            onStats: () => done('stats'),
             optionsOpen: this.options.mesh.visible,
           }),
         keys: (e) => {
@@ -623,9 +624,59 @@ export class Hud {
     });
   }
 
-  /** Solo game setup. Resolves the settings, or null for Back. */
-  showSoloSetup(initial) {
-    const s = { ...initial };
+  /**
+   * Your lifetime stats (see stats.js): `rows` are [label, value] pairs. Reset asks for a second
+   * click first. Resolves 'reset' or null (Back).
+   */
+  showStats(rows) {
+    let armedUntil = 0;
+    const cols = 2;
+    const perCol = Math.ceil(rows.length / cols);
+    return this.#prompt((done) => {
+      this.#openModal({
+        width: 0.66,
+        height: (120 + perCol * 76 + 96) / 1000,
+        draw: (ctx, p) => {
+          const W = p.pxWidth;
+          const H = p.pxHeight;
+          drawPanelBackground(ctx, W, H);
+          text(ctx, 'Your stats', W / 2, 54, { font: `bold 42px ${FONTS.serif}`, fill: THEME.gold });
+          const colW = (W - 80) / cols;
+          rows.forEach(([label, value], i) => {
+            const x = 40 + Math.floor(i / perCol) * colW + 10;
+            const y = 124 + (i % perCol) * 76;
+            text(ctx, label, x, y, { font: `20px ${FONTS.sans}`, align: 'left', fill: THEME.muted });
+            text(ctx, value, x, y + 32, { font: `bold 32px ${FONTS.sans}`, align: 'left', maxWidth: colW - 20 });
+          });
+          const armed = performance.now() < armedUntil;
+          p.button('back', { x: 40, y: H - 76, w: 160, h: 52 }, 'Back', { size: 22, onClick: () => done(null) });
+          p.button('reset', { x: W - 260, y: H - 76, w: 220, h: 52 }, armed ? 'Sure? Click again' : 'Reset stats', {
+            size: armed ? 19 : 22,
+            onClick: () => {
+              if (performance.now() < armedUntil) return done('reset');
+              armedUntil = performance.now() + 3000;
+              p.render();
+              setTimeout(() => p.render(), 3100);
+            },
+          });
+        },
+        keys: (e) => {
+          if (e.key === 'Escape' || e.key === 'Enter') {
+            done(null);
+            return true;
+          }
+        },
+      });
+    });
+  }
+
+  /**
+   * Game setup: player count and house rules. Used before a solo game, and (with its own title and
+   * button) to change the rules for a rematch. `humans` = people at the table, the lowest player
+   * count allowed. Resolves the settings, or null for Back.
+   */
+  showSoloSetup(initial, { title = 'Play vs bots', subtitle = GAME_TAGLINE, startLabel = 'Deal me in', humans = 1 } = {}) {
+    const s = { ...initial, numPlayers: Math.max(initial.numPlayers, humans, 3) };
     return this.#prompt((done) => {
       const start = () => done({ ...s });
       this.#openModal({
@@ -635,10 +686,10 @@ export class Hud {
           const W = p.pxWidth;
           const H = p.pxHeight;
           drawPanelBackground(ctx, W, H);
-          text(ctx, 'Play vs bots', W / 2, 64, { font: `bold 48px ${FONTS.serif}`, fill: THEME.gold });
-          text(ctx, GAME_TAGLINE, W / 2, 110, { font: `22px ${FONTS.sans}`, fill: THEME.muted });
-          drawRules(ctx, p, s, { x: 48, y: 170, w: W - 96, onChange: () => p.render() });
-          p.button('start', { x: W / 2 - 150, y: H - 80, w: 300, h: 60 }, 'Deal me in', { primary: true, size: 30, onClick: start });
+          text(ctx, title, W / 2, 64, { font: `bold 48px ${FONTS.serif}`, fill: THEME.gold });
+          text(ctx, subtitle, W / 2, 110, { font: `22px ${FONTS.sans}`, fill: THEME.muted });
+          drawRules(ctx, p, s, { x: 48, y: 170, w: W - 96, humans, onChange: () => p.render() });
+          p.button('start', { x: W / 2 - 150, y: H - 80, w: 300, h: 60 }, startLabel, { primary: true, size: 30, onClick: start });
           p.button('back', { x: 40, y: H - 76, w: 140, h: 52 }, 'Back', { size: 22, onClick: () => done(null) });
         },
         keys: (e) => {
@@ -980,14 +1031,24 @@ export class Hud {
    * Round / game results. With `waiting` (online guests between rounds) there's no button: the
    * host advances the game and the next round closes it.
    */
-  showSummary(game, { final, waiting = false }) {
+  /**
+   * Round or final results. A final screen resolves 'rematch' | 'rules' | 'menu'; `highlights` are stats
+   * notes ("New personal best!"). `waiting` (guests) shows it without blocking: in a final screen
+   * the only button is Leave table.
+   */
+  showSummary(game, { final, waiting = false, highlights = [] }) {
     const n = game.numPlayers;
+    const notes = final ? highlights : [];
     const options = (done) => ({
       width: 0.72,
-      height: (176 + n * 50 + 96) / 1000,
-      draw: (ctx, p) => this.#drawSummary(ctx, p, game, final, done, waiting),
+      height: (176 + n * 50 + 96 + notes.length * 32) / 1000,
+      draw: (ctx, p) => this.#drawSummary(ctx, p, { game, final, done, waiting, notes }),
       keys: (e) => {
-        if (done && (e.key === 'Enter' || e.key === ' ')) done();
+        if (done && (e.key === 'Enter' || e.key === ' ')) done(final ? 'rematch' : undefined);
+        if (done && final && e.key === 'Escape') {
+          done('menu');
+          return true;
+        }
       },
     });
     if (waiting) {
@@ -995,10 +1056,10 @@ export class Hud {
       this.#openModal(options(null));
       return Promise.resolve();
     }
-    return this.#prompt((done) => this.#openModal(options(() => done())));
+    return this.#prompt((done) => this.#openModal(options(done)));
   }
 
-  #drawSummary(ctx, p, game, final, onDone, waiting) {
+  #drawSummary(ctx, p, { game, final, done, waiting, notes }) {
     const W = p.pxWidth;
     const H = p.pxHeight;
     drawPanelBackground(ctx, W, H);
@@ -1022,12 +1083,16 @@ export class Hud {
       ['Points', 550, 'center'],
       ['Total', W - 50, 'right'],
     ];
-    for (const [label, x, align] of cols) text(ctx, label, x, 150, { font: `bold 22px ${FONTS.sans}`, align, fill: THEME.muted });
+    for (const [label, x, align] of cols) text(ctx, label, x, 150 + notes.length * 32, { font: `bold 22px ${FONTS.sans}`, align, fill: THEME.muted });
 
     const order = final ? game.standings() : game.players;
+    // Stats highlights, between the title and the table.
+    const shift = notes.length * 32;
+    notes.forEach((note, i) => text(ctx, note, W / 2, 132 + i * 32, { font: `bold 23px ${FONTS.sans}`, fill: THEME.good }));
+
     order.forEach((pl, row) => {
       const r = last.results[pl.index];
-      const y = 196 + row * 50;
+      const y = 196 + shift + row * 50;
       if (pl.isHuman) {
         ctx.fillStyle = 'rgba(232,198,106,0.12)';
         ctx.fillRect(30, y - 22, W - 60, 44);
@@ -1039,13 +1104,18 @@ export class Hud {
       text(ctx, String(pl.score), W - 50, y, { font: `bold 28px ${FONTS.sans}`, align: 'right' });
     });
 
-    if (waiting) {
+    if (waiting && !final) {
       text(ctx, 'Waiting for the host to start the next round…', W / 2, H - 50, { font: `bold 22px ${FONTS.sans}`, fill: THEME.muted });
-      return;
+    } else if (waiting) {
+      text(ctx, 'Waiting for the host: rematch or not?', 40, H - 49, { font: `bold 22px ${FONTS.sans}`, align: 'left', fill: THEME.muted });
+      p.button('leave', { x: W - 240, y: H - 78, w: 200, h: 58 }, 'Leave table', { onClick: () => this.onQuit?.() });
+    } else if (final) {
+      const bw = (W - 100) / 3;
+      p.button('rematch', { x: 40, y: H - 78, w: bw, h: 58 }, 'Rematch', { primary: true, size: 26, onClick: () => done('rematch') });
+      p.button('rules', { x: 50 + bw, y: H - 78, w: bw, h: 58 }, 'Change rules', { size: 24, onClick: () => done('rules') });
+      p.button('menu', { x: 60 + 2 * bw, y: H - 78, w: bw, h: 58 }, 'Back to menu', { size: 24, onClick: () => done('menu') });
+    } else {
+      p.button('continue', { x: W / 2 - 140, y: H - 78, w: 280, h: 58 }, 'Next round', { primary: true, onClick: () => done() });
     }
-    p.button('continue', { x: W / 2 - 140, y: H - 78, w: 280, h: 58 }, final ? 'Back to menu' : 'Next round', {
-      primary: true,
-      onClick: onDone,
-    });
   }
 }

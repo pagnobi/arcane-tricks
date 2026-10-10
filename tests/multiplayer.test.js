@@ -367,4 +367,69 @@ describe('online table (loopback network)', () => {
     host.abort();
     await game.catch(() => {});
   });
+
+  it('rematch: guests stay at the table and play again with the same seats', async () => {
+    const { host, clients } = await makeTable({ remotes: 2, settings: { numPlayers: 4, shortGame: true } });
+    const closed = [];
+    clients.forEach((c, i) => c.session.on('closed', () => closed.push(i)));
+    await host.start();
+    await settle();
+    const seatsBefore = host.seats.map((s) => `${s.kind}:${s.name}`);
+    expect(clients.every((c) => c.session.finished && !c.session.closed)).toBe(true);
+
+    await host.rematch();
+    await settle();
+    expect(host.game.phase).toBe('gameOver');
+    expect(host.seats.map((s) => `${s.kind}:${s.name}`)).toEqual(seatsBefore);
+    for (const c of clients) {
+      const types = c.presenter.events.map((e) => e.type);
+      expect(types.filter((t) => t === 'game')).toHaveLength(2);
+      expect(types.filter((t) => t === 'gameEnd')).toHaveLength(2);
+      assertNoLeaks(c.presenter.events);
+    }
+    expect(closed).toEqual([]);
+
+    // The host heading back to the menu closes the table for the guests waiting on it.
+    host.abort();
+    await settle();
+    expect(closed.sort()).toEqual([0, 1]);
+  });
+
+  it('rematch: a player who dropped out is replaced by a bot keeping their name', async () => {
+    const { host, clients } = await makeTable({ remotes: 2, settings: { numPlayers: 3, shortGame: true } });
+    await host.start();
+    await settle();
+    clients[1].session.leave();
+    await settle();
+    await host.rematch();
+    expect(host.seats.map((s) => `${s.kind}:${s.name}`)).toEqual(['local:Host', 'remote:Guest 0', 'bot:Guest 1']);
+    expect(host.game.phase).toBe('gameOver');
+    expect(clients[0].presenter.events.filter((e) => e.type === 'gameEnd')).toHaveLength(2);
+  });
+
+  it('rematch with changed rules: bots join or leave, players always stay', async () => {
+    const { host, clients } = await makeTable({ remotes: 1, settings: { numPlayers: 3, shortGame: true } });
+    const lobbies = [];
+    clients[0].session.on('lobby', (l) => lobbies.push(l));
+    await host.start();
+    await settle();
+    expect(host.seats.map((s) => s.kind)).toEqual(['local', 'remote', 'bot']);
+
+    host.updateSettings({ numPlayers: 5, blindBids: true });
+    await host.rematch();
+    await settle();
+    expect(host.seats.map((s) => s.kind)).toEqual(['local', 'remote', 'bot', 'bot', 'bot']);
+    expect(new Set(host.seats.map((s) => s.name)).size).toBe(5);
+    expect(host.game.variants.blindBids).toBe(true);
+    expect(host.game.players).toHaveLength(5);
+
+    host.updateSettings({ numPlayers: 3 }); // can't go below the 2 people + the 3-player minimum
+    await host.rematch();
+    await settle();
+    expect(host.seats.map((s) => s.kind)).toEqual(['local', 'remote', 'bot']);
+    const games = clients[0].presenter.events.filter((e) => e.type === 'game');
+    expect(games.map((e) => e.view.players.length)).toEqual([3, 5, 3]);
+    expect(lobbies).toEqual([]); // guests aren't sent back to a lobby screen between games
+    assertNoLeaks(clients[0].presenter.events);
+  });
 });

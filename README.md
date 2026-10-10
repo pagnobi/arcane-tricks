@@ -73,6 +73,19 @@ Empty seats are filled by bots when you press **Start game**. Up to 6 players ca
   home screen opens an on-screen keyboard (point and click in VR, or just type on desktop) with a
   "Random name" button. Names are up to 16 letters, digits, spaces and `' . _ -`. The host re-checks
   every name it receives and numbers duplicates ("Amber Owl 2").
+- **Rematch:** when a game ends, the host picks **Rematch** to play again at the same table: same players,
+  bots and house rules. **Change rules** opens the setup screen first, to change the house rules or the
+  player count. Bots join or leave to match it, and people are never removed. Guests wait on the
+  results screen (or **Leave table**). Anyone who dropped out by then is replaced by a bot under their
+  name. Solo games have the same buttons.
+
+## Stats
+
+**Stats** on the home screen shows your record: games, wins and win rate, best and average score,
+bid accuracy (rounds where you took exactly what you bid), perfect games (every bid hit), win streak,
+and solo vs online games. A game counts once it's finished. Quitting midway records nothing. Ties for
+first count as wins. Stats are kept in your browser (`src/stats.js`), and **Reset stats** clears them.
+The final results screen points out a new personal best, a win streak or a perfect game.
 
 ### How it works
 

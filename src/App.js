@@ -5,6 +5,7 @@ import { PoseSync } from './session/PoseSync.js';
 import { Aborted, TableHost } from './session/TableHost.js';
 import { PeerClient, PeerHost } from './net/PeerNet.js';
 import { isValidCode, normalizeCode, randomId, randomName } from './net/protocol.js';
+import { loadStats, recordGame, resetStats, statRows } from './stats.js';
 
 const CLIENT_ID_KEY = 'arcane-tricks:clientId';
 
@@ -95,6 +96,7 @@ export class App {
     this.getLook = getLook;
     this.setLook = setLook;
     this.presenter = new Presenter({ cards, avatars, hud, sound });
+    this.presenter.onGameEnd = (view, opts) => recordGame(view, opts);
     this.poseSync = new PoseSync(world);
     this.clientId = loadClientId();
     this.session = null; // { quit(), emote(text) } for whatever table we're at
@@ -130,6 +132,10 @@ export class App {
       if (choice === 'wizard') {
         const look = await this.hud.askLook({ initial: this.getLook(), name: this.getName() });
         if (look) this.setLook(look);
+        continue;
+      }
+      if (choice === 'stats') {
+        while ((await this.hud.showStats(statRows(loadStats()))) === 'reset') resetStats();
         continue;
       }
       try {
@@ -168,6 +174,31 @@ export class App {
     this.session = { quit: () => host.abort(), emote: () => {} };
     this.table = host;
     await host.start();
+    await this.#rematches(host, { save: true });
+  }
+
+  /**
+   * After a game: play again while the player picks Rematch, or Change rules first (the setup
+   * screen, then a rematch with the new settings). Back on the setup screen returns to the results.
+   */
+  async #rematches(host, { save }) {
+    for (;;) {
+      let choice = this.presenter.endChoice;
+      if (choice === 'rules') {
+        const humans = host.seats.filter((s) => s.kind !== 'bot').length;
+        const settings = await this.hud.showSoloSetup(host.settings, { title: 'Rematch', subtitle: 'Change the rules for the next game', startLabel: 'Rematch', humans });
+        if (settings) {
+          if (save) saveSettings(settings);
+          host.updateSettings(settings);
+          choice = 'rematch';
+        } else {
+          this.presenter.endChoice = await this.hud.showSummary(this.presenter.view, { final: true });
+          continue;
+        }
+      }
+      if (choice !== 'rematch') return;
+      await host.rematch();
+    }
   }
 
   async #host() {
@@ -198,6 +229,7 @@ export class App {
     this.poseSync.start((pose) => host.sendLocalPose(pose));
     try {
       await host.start();
+      await this.#rematches(host, { save: true }); // same table, same guests
     } finally {
       host.abort(); // tells guests the table is closed
       setTimeout(() => net.close(), 500);
@@ -295,10 +327,6 @@ export class App {
       session.on('rejected', (reason) => finish({ kind: 'rejected', reason }));
       session.on('closed', () => finish({ kind: 'closed' }));
       session.on('lost', () => finish({ kind: 'lost' }));
-      session.on('ended', () => {
-        session.leave();
-        finish({ kind: 'ended' });
-      });
     });
   }
 }
