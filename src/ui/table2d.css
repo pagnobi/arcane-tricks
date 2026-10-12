@@ -1,0 +1,537 @@
+/* The 2D table (phones, or anyone who picks "Table: 2D" in Options). Laid out for both
+   orientations; the hand of cards is sized by Presenter2D to fit the space it gets. */
+
+.t2d {
+  --gold: #e8c66a;
+  --gold-bright: #ffe27a;
+  --text: #f4ecd6;
+  --muted: #a6a8c2;
+  --good: #7fd69a;
+  --bad: #f08a7a;
+  --panel: rgba(21, 23, 52, 0.94);
+  --edge: rgba(201, 165, 76, 0.75);
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: auto auto 1fr auto auto;
+  grid-template-areas: 'top' 'players' 'trick' 'me' 'hand';
+  gap: 6px;
+  padding: calc(env(safe-area-inset-top) + 6px) calc(env(safe-area-inset-right) + 8px) calc(env(safe-area-inset-bottom) + 6px)
+    calc(env(safe-area-inset-left) + 8px);
+  background: radial-gradient(ellipse at 50% 45%, #1f5a3c 0%, #133a28 55%, #0b0d1a 100%);
+  color: var(--text);
+  font-family: system-ui, 'Segoe UI', sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  overflow: hidden;
+}
+.t2d[hidden] {
+  display: none;
+}
+/* While an Options or message window is open (drawn by the 3D canvas underneath), step aside. */
+.t2d.behind {
+  visibility: hidden;
+}
+
+.t2d button {
+  font: inherit;
+  color: var(--text);
+  background: #2d2a55;
+  border: 1.5px solid var(--edge);
+  border-radius: 10px;
+  padding: 6px 12px;
+  min-height: 38px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.t2d button:active {
+  background: #4a4488;
+}
+.t2d button.primary {
+  background: #c0902e;
+  color: #1a1206;
+  font-weight: 700;
+}
+.t2d button:disabled {
+  opacity: 0.35;
+}
+
+/* Top bar */
+.t2d-top {
+  grid-area: top;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.t2d-round {
+  font: 700 18px Georgia, serif;
+  color: var(--gold);
+  white-space: nowrap;
+}
+.t2d-trump {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-weight: 700;
+  font-size: 16px;
+  min-width: 0;
+  white-space: nowrap;
+}
+@media (max-width: 420px) {
+  .t2d-trumpword {
+    display: none; /* "Sun" with its badge says enough on a narrow phone */
+  }
+}
+.t2d-badge {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  flex: none;
+}
+
+/* Other players */
+.t2d-players {
+  grid-area: players;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  min-height: 0;
+}
+.t2d-player {
+  position: relative;
+  flex: 1 1 30%;
+  max-width: 200px;
+  min-width: 100px;
+  background: var(--panel);
+  border: 2px solid var(--edge);
+  border-radius: 12px;
+  padding: 5px 9px 6px;
+  line-height: 1.15;
+}
+.t2d-player.turn {
+  border-color: var(--gold-bright);
+  box-shadow: 0 0 12px rgba(255, 226, 122, 0.55);
+}
+.t2d-name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font: 700 14px Georgia, serif;
+  color: var(--gold);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.t2d-name span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.t2d-tag {
+  flex: none;
+  font: 800 9px system-ui, sans-serif;
+  letter-spacing: 0.04em;
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: #c0902e;
+  color: #1a1206;
+}
+.t2d-tag.soft {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid rgba(166, 168, 194, 0.5);
+}
+.t2d-bid {
+  font-weight: 800;
+  font-size: 17px;
+  white-space: nowrap;
+}
+.t2d-bid.muted {
+  color: var(--muted);
+}
+.t2d-bid.bad {
+  color: var(--bad);
+}
+.t2d-score {
+  font-size: 12px;
+  color: var(--muted);
+}
+.t2d-mini {
+  position: absolute;
+  right: 6px;
+  bottom: 5px;
+  height: 46px;
+  border-radius: 4px;
+}
+
+/* Speech bubbles: Thinking…, Wins the trick!, emotes */
+.t2d-bubble {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% - 6px);
+  transform: translateX(-50%);
+  background: #f7f1e3;
+  color: #2b2540;
+  font-weight: 800;
+  font-size: 13px;
+  white-space: nowrap;
+  padding: 3px 10px;
+  border-radius: 12px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  z-index: 2;
+  pointer-events: none;
+}
+.t2d-player .t2d-bubble {
+  bottom: auto;
+  top: -4px;
+  transform: translate(-50%, -60%);
+}
+.t2d-bubble[hidden] {
+  display: none;
+}
+
+/* The trick in the middle */
+.t2d-trick {
+  grid-area: trick;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
+.t2d-plays {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-end;
+  gap: 8px;
+  max-height: 100%;
+}
+.t2d-play {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+.t2d-play img {
+  height: var(--trick-card, 86px);
+  border-radius: 6px;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45);
+}
+.t2d-play.win img {
+  box-shadow: 0 0 0 3px var(--gold-bright), 0 0 16px rgba(255, 226, 122, 0.8);
+}
+.t2d-play span {
+  font-size: 12px;
+  font-weight: 700;
+  max-width: 76px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.t2d-trumpcard img {
+  display: block;
+  height: 40px;
+  border-radius: 4px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+}
+.t2d-empty {
+  color: rgba(244, 236, 214, 0.45);
+  font-size: 14px;
+}
+
+/* You */
+.t2d-me {
+  grid-area: me;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--panel);
+  border: 2px solid var(--edge);
+  border-radius: 12px;
+  padding: 5px 10px;
+}
+.t2d-me.turn {
+  border-color: var(--gold-bright);
+  box-shadow: 0 0 14px rgba(255, 226, 122, 0.6);
+}
+.t2d-me .t2d-bid {
+  font-size: 20px;
+}
+.t2d-me .t2d-score {
+  font-size: 14px;
+  font-weight: 700;
+}
+.t2d-hint {
+  flex: 1;
+  text-align: right;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gold);
+}
+.t2d-me .t2d-bubble {
+  left: 40px;
+  transform: none;
+}
+
+/* Your hand */
+.t2d-hand {
+  grid-area: hand;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding-top: 16px; /* room for a lifted card */
+}
+.t2d-row {
+  display: flex;
+  justify-content: center;
+}
+.t2d .t2d-card {
+  position: relative;
+  padding: 0;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  min-height: 0;
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+.t2d-card img {
+  display: block;
+  width: 100%;
+  border-radius: 7px;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.5);
+}
+.t2d-card.dim {
+  filter: brightness(0.42);
+}
+.t2d-card.lifted {
+  transform: translateY(-16px);
+  z-index: 5;
+}
+.t2d-card.lifted img {
+  box-shadow: 0 0 0 3px var(--gold-bright), 0 6px 14px rgba(0, 0, 0, 0.6);
+}
+.t2d-card.playable {
+  cursor: pointer;
+}
+
+/* The Won count pops when it goes up */
+.t2d-won {
+  display: inline-block;
+}
+.t2d-won.pop {
+  animation: t2d-pop 1.1s ease-out;
+}
+.t2d-plus {
+  position: absolute;
+  color: var(--good);
+  font-weight: 800;
+  font-size: 15px;
+  animation: t2d-plus 1.1s ease-out forwards;
+  pointer-events: none;
+}
+@keyframes t2d-pop {
+  0% {
+    transform: scale(1);
+    color: inherit;
+  }
+  25% {
+    transform: scale(1.6);
+    color: var(--good);
+  }
+  70% {
+    color: var(--good);
+  }
+  100% {
+    transform: scale(1);
+    color: inherit;
+  }
+}
+@keyframes t2d-plus {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-22px);
+  }
+}
+
+/* Bottom sheets (bid, trump, results) and pop-up menus */
+.t2d-sheet {
+  position: absolute;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom) + 8px);
+  transform: translateX(-50%);
+  width: min(560px, calc(100% - 16px));
+  max-height: calc(100% - 16px);
+  overflow-y: auto;
+  background: rgba(15, 17, 36, 0.97);
+  border: 2px solid var(--gold);
+  border-radius: 16px;
+  padding: 12px 14px 14px;
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.6);
+  z-index: 10;
+  text-align: center;
+}
+.t2d-sheet[hidden] {
+  display: none;
+}
+.t2d-sheet.center {
+  bottom: auto;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+.t2d-sheet h2 {
+  margin: 0 0 4px;
+  font: 700 24px Georgia, serif;
+  color: var(--gold);
+}
+.t2d-sheet p {
+  margin: 2px 0 8px;
+  font-weight: 700;
+}
+.t2d-sheet .note {
+  color: var(--muted);
+  font-weight: 400;
+}
+.t2d-sheet .warn {
+  color: var(--bad);
+}
+.t2d-sheet .good {
+  color: var(--good);
+}
+.t2d-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 8px;
+}
+.t2d-buttons.numbers button {
+  min-width: 46px;
+  min-height: 46px;
+  font-size: 20px;
+  font-weight: 800;
+}
+.t2d-suit {
+  min-width: 108px;
+  font-weight: 800;
+  border-width: 2px !important;
+}
+.t2d-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  margin-top: 4px;
+}
+.t2d-table th {
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 12px;
+  padding: 3px 4px;
+}
+.t2d-table td {
+  padding: 5px 4px;
+  font-weight: 700;
+}
+.t2d-table td:first-child,
+.t2d-table th:first-child {
+  text-align: left;
+}
+.t2d-table tr.you td {
+  color: var(--gold);
+  background: rgba(232, 198, 106, 0.12);
+}
+.t2d-table .pos {
+  color: var(--good);
+}
+.t2d-table .neg {
+  color: var(--bad);
+}
+
+.t2d-pop {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 50px);
+  right: calc(env(safe-area-inset-right) + 8px);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(15, 17, 36, 0.97);
+  border: 2px solid var(--gold);
+  border-radius: 14px;
+  padding: 10px;
+  z-index: 12;
+  min-width: 150px;
+}
+.t2d-pop[hidden] {
+  display: none;
+}
+.t2d-pop.emotes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  min-width: 0;
+}
+.t2d-pop.emotes[hidden] {
+  display: none;
+}
+
+/* Phones held sideways: compact player tiles in a row, your details beside your hand. */
+@media (orientation: landscape) and (max-height: 560px) {
+  .t2d {
+    grid-template-columns: auto 1fr;
+    grid-template-rows: auto auto 1fr auto;
+    grid-template-areas: 'top top' 'players players' 'trick trick' 'me hand';
+    gap: 4px;
+  }
+  .t2d-players {
+    flex-wrap: nowrap;
+  }
+  .t2d-player {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 3px 8px 4px;
+  }
+  .t2d-player .t2d-bid {
+    font-size: 15px;
+  }
+  .t2d-player .t2d-score {
+    font-size: 11px;
+  }
+  .t2d-me {
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 2px;
+    min-width: 132px;
+  }
+  .t2d-me .t2d-bid {
+    font-size: 17px;
+  }
+  .t2d-hint {
+    text-align: left;
+    flex: none;
+    font-size: 12px;
+  }
+  .t2d-hand {
+    padding-top: 14px;
+  }
+  .t2d-sheet h2 {
+    font-size: 20px;
+  }
+  .t2d-sheet {
+    padding: 8px 12px 10px;
+  }
+}

@@ -14,8 +14,17 @@
         margin: 0;
         height: 100%;
         overflow: hidden;
+        overscroll-behavior: none;
+        -webkit-tap-highlight-color: transparent;
+        -webkit-user-select: none;
+        user-select: none;
         background: #0b0d1a;
         font-family: system-ui, 'Segoe UI', sans-serif;
+      }
+      /* The game handles every touch itself: no page scrolling, pinch-zoom or double-tap zoom */
+      #app canvas {
+        display: block;
+        touch-action: none;
       }
       /* Enter VR / Enter Passthrough: in a corner, clear of your hand */
       #VRButton {
@@ -50,6 +59,7 @@
         inset: 0;
         pointer-events: none;
         box-shadow: inset 0 0 70px 14px rgba(242, 201, 76, 0.55);
+        z-index: 30; /* above the 2D table too */
         opacity: 0;
         transition: opacity 0.3s;
       }

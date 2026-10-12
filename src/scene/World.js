@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { DESKTOP_EYE, DESKTOP_LOOK, TABLE_CENTER, TABLE_RADIUS, fitHeightOffset, nameplatePosition } from './layout.js';
 import { buildScene } from './scenery.js';
+import { isPhone } from '../device.js';
 
 /**
  * What must always fit on a desktop screen: every other player's nameplate (at its largest size),
@@ -22,6 +23,9 @@ function desktopContentPoints(n) {
 
 const XR_FEATURES = ['local-floor', 'bounded-floor', 'hand-tracking', 'layers'];
 
+/** Camera layer of things still shown on the flat screen (the 2D table's menus): see setFlat. */
+export const FLAT_LAYER = 1;
+
 /** Renderer, camera rig, environment and the frame loop. */
 export class World {
   constructor(container) {
@@ -38,6 +42,8 @@ export class World {
     this.fog = new THREE.Fog(0x0b0d1a, 7, 22);
     this.scene.background = this.background;
     this.scene.fog = this.fog;
+    this.flat = false;
+    this.flatBackground = new THREE.Color(0x0b0d1a);
 
     this.camera = new THREE.PerspectiveCamera(66, window.innerWidth / window.innerHeight, 0.03, 60);
     // The rig is the player's origin; in VR the headset and controllers move within it.
@@ -126,8 +132,8 @@ export class World {
   #updateXrButton() {
     const b = this.xrButton;
     const wantsPassthrough = this.headsetView === 'passthrough' && this.arSupported;
-    // No headset available (most PCs and phones): no button at all.
-    b.hidden = !this.vrSupported && !this.arSupported;
+    // No headset available (most PCs, phones, or the flat 2D table): no button at all.
+    b.hidden = (!this.vrSupported && !this.arSupported) || this.flat || isPhone();
     if (this.isXR) b.textContent = 'EXIT VR';
     else b.textContent = wantsPassthrough ? 'ENTER PASSTHROUGH' : 'ENTER VR';
   }
@@ -166,6 +172,18 @@ export class World {
     }
   }
 
+  /**
+   * Flat mode, for the 2D table (phones): the 3D room, table, cards and wizards are hidden, and
+   * only the menus (on FLAT_LAYER) are drawn, on a plain background. Headsets aren't offered.
+   */
+  setFlat(on) {
+    if (on === this.flat) return;
+    this.flat = on;
+    this.camera.layers.set(on ? FLAT_LAYER : 0);
+    this.scene.background = on ? this.flatBackground : this.passthrough ? null : this.background;
+    this.#updateXrButton();
+  }
+
   /** The room around the table: 'tower' | 'forest' | 'sky' (see scenery.js). A personal choice. */
   setScene(id) {
     if (id === this.sceneId) return;
@@ -192,7 +210,7 @@ export class World {
     this.woodTable.visible = !on;
     this.glassTable.visible = on;
     // A transparent clear colour is what lets the headset's cameras show through.
-    this.scene.background = on ? null : this.background;
+    this.scene.background = this.flat ? this.flatBackground : on ? null : this.background;
     this.scene.fog = on ? null : this.fog;
     this.renderer.setClearColor(0x000000, on ? 0 : 1);
     for (const fn of this.onPassthroughChange) fn(on);

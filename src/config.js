@@ -48,6 +48,7 @@ export const DEFAULT_PREFS = {
   sfxVolume: 0.8, // 0–1
   vrPosture: 'seated', // 'seated' | 'standing'
   headsetView: 'vr', // 'vr' (the scene below) | 'passthrough' (your real room, on headsets that support it)
+  tableView: null, // '3d' | '2d' (flat cards, see Presenter2D); null = by device: 2D on phones
   scene: 'tower', // the room around the table, just for you: 'tower' | 'forest' | 'sky' (see scene/scenery.js)
   name: null, // your display name at online tables (a random one is picked on first run)
   look: { ...DEFAULT_LOOK }, // your wizard's style + hat colour (see game/looks.js)
@@ -63,6 +64,7 @@ export function loadPrefs() {
       prefs.look = sanitizeLook(prefs.look);
       if (prefs.headsetView !== 'passthrough') prefs.headsetView = 'vr';
       if (!SCENE_IDS.includes(prefs.scene)) prefs.scene = 'tower';
+      if (prefs.tableView !== '2d' && prefs.tableView !== '3d') prefs.tableView = null;
       return prefs;
     }
   } catch {

@@ -126,6 +126,7 @@ export class Pointer {
 
   /** The first visible thing the ray hits decides: interactive → target, otherwise it blocks. */
   #cast() {
+    this.raycaster.layers.mask = this.world.camera.layers.mask; // only what's on screen (see World.setFlat)
     const hits = this.raycaster.intersectObjects(this.targets, true);
     for (const hit of hits) {
       let o = hit.object;

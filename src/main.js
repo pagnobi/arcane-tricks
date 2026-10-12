@@ -9,6 +9,7 @@ import { Panel } from './ui/Panel.js';
 import { App } from './App.js';
 import { loadPrefs, onPrefsChangedElsewhere, updatePrefs } from './config.js';
 import { randomName, sanitizeName } from './net/protocol.js';
+import { resolveTableView } from './device.js';
 
 const world = new World(document.getElementById('app'));
 const tweens = new Tweens();
@@ -24,12 +25,15 @@ world.onPassthroughChange.push((on) => avatars.setGhost(on));
 const hud = new Hud(world, pointer);
 Panel.onButtonClick = () => sound.play('click', null, { volume: 0.5 });
 
+let app = null; // created below, once preferences are loaded
+
 // Player preferences (Options panel + your display name)
 function applyPrefs(prefs) {
   sound.configure(prefs);
   if (prefs.vrPosture !== world.posture) world.setPosture(prefs.vrPosture);
   world.setHeadsetView(prefs.headsetView);
   world.setScene(prefs.scene);
+  app?.applyTableView(); // 2D or 3D table (waits for the current game to end)
 }
 hud.prefs = loadPrefs();
 if (!sanitizeName(hud.prefs.name)) hud.prefs = updatePrefs({ name: randomName() });
@@ -47,7 +51,7 @@ onPrefsChangedElsewhere((prefs) => {
 hud.onFitHeight = () => world.fitHeight();
 world.onHeightFitted = (offset) => hud.showHeightFitted(offset);
 
-const app = new App({
+app = new App({
   world,
   cards,
   avatars,
@@ -58,10 +62,12 @@ const app = new App({
     hud.prefs = updatePrefs({ name });
   },
   getLook: () => hud.prefs.look,
+  getTableView: () => resolveTableView(hud.prefs.tableView),
   setLook: (look) => {
     hud.prefs = updatePrefs({ look });
   },
 });
+app.applyTableView();
 app.run();
 
 if (import.meta.env.DEV) window.__arcane = { world, app, hud, cards, sound, avatars };

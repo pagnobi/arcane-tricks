@@ -61,6 +61,19 @@ npm run dev:headset  # serves https://<your-pc-ip>:5173 with a self-signed cert
 Open that address in the Quest browser, accept the certificate warning, then press **Enter VR**.
 Your PC and the headset must be on the same Wi-Fi network.
 
+## Phones: the 2D table
+
+On a phone the game uses a **2D table** instead of the 3D room. It's a flat, touch-friendly screen with only the
+card game on it: each player's name, bid, tricks won and score, the trick being played, the trump, and your hand.
+It works held upright or sideways. Tap a card to lift it, then tap it again to play it (one click with a mouse).
+Thinking, trick wins and emotes appear as speech bubbles on the players. **Menu** has Scores, Options and Quit.
+The menus (home, lobby, settings, stats) are drawn large on a plain background.
+
+**Options → Table: 3D room / 2D cards** lets anyone switch, for example to use 2D on a tablet or PC. The change
+applies from the next game. Phone and PC/VR players can share an online table, because each player's table is
+drawn on their own device. The 2D table is `src/session/Presenter2D.js` (+ `src/ui/table2d.css`). It takes
+the same events and prompts as the 3D `Presenter`.
+
 ## Online multiplayer
 
 From the home screen, pick **Host an online table**. You get a 4-letter room code and a share link.

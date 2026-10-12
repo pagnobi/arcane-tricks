@@ -49,6 +49,11 @@ export class Presenter {
     return run;
   }
 
+  /** After a game (host / solo): Rematch, Change rules or Back to menu, on the results screen. */
+  askEndChoice() {
+    return this.hud.showSummary(this.view, { final: true });
+  }
+
   cancelPrompts(error = new Aborted()) {
     this.hud.cancelPrompts(error);
     this.pendingPick?.(error);
@@ -186,7 +191,8 @@ export class Presenter {
           else this.hud.showSummary(view, { final: false, waiting: true });
         }
         this.#check();
-        await this.#step(this.cards.gatherAll());
+        // The deal passes left: the cards gather in front of the next dealer (or the middle, at the end).
+        await this.#step(this.cards.gatherAll(final ? null : view.nextSeat(view.dealer), view.numPlayers));
         break;
       }
 

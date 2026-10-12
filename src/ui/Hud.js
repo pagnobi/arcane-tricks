@@ -4,7 +4,9 @@ import { FONTS, POP_SECONDS, THEME, drawBidWon, drawPanelBackground, text, wrapp
 import { drawSuitGlyph } from '../scene/cardTextures.js';
 import { SUITS, SUIT_INFO } from '../game/cards.js';
 import { DESKTOP_EYE, EYE } from '../scene/layout.js';
+import { FLAT_LAYER } from '../scene/World.js';
 import { SCENES } from '../scene/scenery.js';
+import { isPhone, resolveTableView } from '../device.js';
 import { DEFAULT_PREFS, GAME_TAGLINE } from '../config.js';
 import { CODE_LENGTH, EMOTES, NAME_CHAR, NAME_MAX, normalizeCode, sanitizeName } from '../net/protocol.js';
 import {
@@ -28,6 +30,8 @@ const SCOREPAD_POS = new THREE.Vector3(0.52, 1.2, -0.4);
 const EMOTES_POS = new THREE.Vector3(-0.5, 1.24, -0.3);
 const CONTROLS_VR_POS = new THREE.Vector3(0.98, 1.2, -0.05);
 const SCOREPAD_ROUNDS = 6;
+const OPTIONS_H = 0.84; // full Options (3D table)
+const OPTIONS_FLAT_H = 0.4; // Options on the flat 2D screen: sound and the table choice only
 const VR_BUTTON_PX = 64; // the page's Enter VR button, bottom-right, incl. its margin
 
 function suitBadge(ctx, suit, cx, cy, r) {
@@ -64,7 +68,7 @@ export class Hud {
     this.status = this.#makePanel(0.36, 0.176, STATUS_POS, (ctx, p) => this.#drawStatus(ctx, p));
     this.modal = this.#makePanel(0.7, 0.6, MODAL_POS, (ctx, p) => this.modalDraw?.(ctx, p));
     this.scorepad = this.#makePanel(0.62, 0.3, SCOREPAD_POS, (ctx, p) => this.#drawScorepad(ctx, p));
-    this.options = this.#makePanel(0.54, 0.75, SCOREPAD_POS, (ctx, p) => this.#drawOptions(ctx, p));
+    this.options = this.#makePanel(0.54, OPTIONS_H, SCOREPAD_POS, (ctx, p) => this.#drawOptions(ctx, p));
     // How to look around and play; shown with the Options menu (below it on desktop, beside it in VR).
     this.controls = this.#makePanel(0.8, 0.3, CONTROLS_VR_POS, (ctx, p) => this.#drawControls(ctx, p));
     this.menuPop = this.#makePanel(0.17, 0.16, STATUS_POS, (ctx, p) => this.#drawMenuPop(ctx, p));
@@ -107,6 +111,7 @@ export class Hud {
 
   #makePanel(width, height, position, draw) {
     const panel = new Panel({ width, height, draw });
+    panel.mesh.layers.enable(FLAT_LAYER); // menus stay visible on the flat (2D table) screen
     panel.holder = new THREE.Group();
     panel.holder.add(panel.mesh);
     panel.holder.position.copy(position);
@@ -124,7 +129,7 @@ export class Hud {
   #layoutHud() {
     const cam = this.world.camera;
     const xr = this.world.isXR;
-    const key = `${xr}|${this.world.xrButton.hidden}|${cam.aspect.toFixed(3)}|${cam.fov.toFixed(2)}|${this.scorepad.height}|${this.modal.width}x${this.modal.height}|${this.modalPlace}|${this.emotes.mesh.visible}|${this.modal.mesh.visible}|${this.controls.mesh.visible}`;
+    const key = `${xr}|${this.world.xrButton.hidden}|${cam.aspect.toFixed(3)}|${cam.fov.toFixed(2)}|${this.scorepad.height}|${this.modal.width}x${this.modal.height}|${this.modalPlace}|${this.emotes.mesh.visible}|${this.modal.mesh.visible}|${this.controls.mesh.visible}|${this.world.flat}|${this.options.height}`;
     if (key === this.layoutKey) return;
     this.layoutKey = key;
 
@@ -175,10 +180,15 @@ export class Hud {
     // windows (phones held upright), and drawn over everything else.
     const modal = this.modal;
     const natural = dist / MODAL_POS.distanceTo(DESKTOP_EYE);
-    const fit = Math.min(natural, (0.94 * 2 * hw) / modal.width, (0.9 * 2 * hh) / modal.height);
+    const flat = this.world.flat;
+    // Flat (2D table, phones): dialogs fill most of the screen instead of their size in the room.
+    const grow = isPhone() ? Infinity : natural * 1.6; // on phones, as big as the screen allows
+    const fit = flat
+      ? Math.min(grow, (0.96 * 2 * hw) / modal.width, (0.94 * 2 * hh) / modal.height)
+      : Math.min(natural, (0.94 * 2 * hw) / modal.width, (0.9 * 2 * hh) / modal.height);
     const w = modal.width * fit;
     const h = modal.height * fit;
-    const centreY = Math.min(0.08 * hh, hh - h / 2);
+    const centreY = flat ? 0 : Math.min(0.08 * hh, hh - h / 2);
     if (this.modalPlace === 'nearStatus') {
       // The bid box sits on top of your status board (or the emote bar above it, online),
       // lined up with the board's left edge.
@@ -201,7 +211,12 @@ export class Hud {
     // Options sits top-right. In squarer windows it could reach over the centred menu (and the
     // Controls box under it), so shrink it to fit the space beside them, but no smaller than
     // 60% (very narrow screens just have to overlap).
-    if (this.modalPlace !== 'nearStatus') {
+    if (flat) {
+      // Flat: Options opens in the middle, over everything, as large as fits.
+      const oScale = Math.min(grow, (0.96 * 2 * hw) / this.options.width, (0.94 * 2 * hh) / this.options.height);
+      pin(this.options, oScale, 0, 0, 12);
+      this.options.holder.position.z = -dist * 0.95; // in front of the menu, so it gets the taps
+    } else if (this.modalPlace !== 'nearStatus') {
       let reach = 0; // how far right of centre the centred panels go
       if (modal.mesh.visible) reach = w / 2;
       if (controls.mesh.visible) reach = Math.max(reach, (controls.width * cScale) / 2);
@@ -441,6 +456,7 @@ export class Hud {
 
   /** Controls on their own: shown on the main menu when the game first opens. */
   showControls() {
+    if (this.world.flat) return; // the 2D table explains itself
     this.controls.mesh.visible = true;
     this.controls.render();
   }
@@ -453,8 +469,9 @@ export class Hud {
 
   toggleOptions() {
     this.options.mesh.visible = !this.options.mesh.visible;
-    this.controls.mesh.visible = this.options.mesh.visible;
+    this.controls.mesh.visible = this.options.mesh.visible && !this.world.flat;
     if (this.options.mesh.visible) {
+      this.options.setSize(this.options.width, this.world.flat ? OPTIONS_FLAT_H : OPTIONS_H);
       this.scorepad.mesh.visible = false;
       this.options.render();
       this.controls.render();
@@ -513,6 +530,25 @@ export class Hud {
     volume(172, 'Music', 'musicVolume');
     volume(228, 'Effects', 'sfxVolume');
 
+    // Table: 3D (the room, VR) or 2D (flat cards, made for phones). Takes effect from the next game.
+    const tableRow = (y) => {
+      const current = resolveTableView(this.prefs.tableView);
+      text(ctx, 'Table', 26, y + 24, { font: `bold 24px ${FONTS.sans}`, align: 'left' });
+      [['3d', '3D room'], ['2d', '2D cards']].forEach(([value, name], i) => {
+        p.button(`table-${value}`, { x: W - 26 - (2 - i) * 158, y, w: 150, h: 48 }, name, {
+          size: 22,
+          primary: current === value,
+          onClick: () => this.#setPref('tableView', value),
+        });
+      });
+      const note = this.inGame && current !== (this.world.flat ? '2d' : '3d') ? 'Switches when this game ends.' : '2D cards suit phones: just the table, big and simple.';
+      text(ctx, note, W / 2, y + 82, { font: `20px ${FONTS.sans}`, fill: THEME.muted, maxWidth: W - 52 });
+    };
+    if (this.world.flat) {
+      tableRow(272);
+      return;
+    }
+
     segmented(270, 'In VR I’m…', 'vrPosture', [
       ['seated', 'Seated'],
       ['standing', 'Standing'],
@@ -546,6 +582,8 @@ export class Hud {
     segmented(652, 'Scene', 'scene', SCENES.map((s) => [s.id, s.label]));
     const sceneName = SCENES.find((s) => s.id === this.prefs.scene)?.name ?? '';
     text(ctx, inRoom ? `${sceneName} (hidden while My room is on)` : sceneName, W / 2, 722, { font: `20px ${FONTS.sans}`, fill: THEME.muted, maxWidth: W - 52 });
+
+    tableRow(752);
   }
 
   /** Written instructions: how to look around and play, for the device you're on. */

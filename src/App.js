@@ -1,6 +1,7 @@
 import { loadSettings, saveSettings } from './config.js';
 import { ClientSession } from './session/ClientSession.js';
 import { Presenter } from './session/Presenter.js';
+import { Presenter2D } from './session/Presenter2D.js';
 import { PoseSync } from './session/PoseSync.js';
 import { Aborted, TableHost } from './session/TableHost.js';
 import { PeerClient, PeerHost } from './net/PeerNet.js';
@@ -86,7 +87,7 @@ const REJECTED = {
  * Top-level flow: home menu → solo game, hosting a table, or joining one → back to the menu.
  */
 export class App {
-  constructor({ world, cards, avatars, hud, sound, getName, setName, getLook, setLook }) {
+  constructor({ world, cards, avatars, hud, sound, getName, setName, getLook, setLook, getTableView }) {
     this.world = world;
     this.cards = cards;
     this.avatars = avatars;
@@ -95,8 +96,15 @@ export class App {
     this.setName = setName;
     this.getLook = getLook;
     this.setLook = setLook;
-    this.presenter = new Presenter({ cards, avatars, hud, sound });
-    this.presenter.onGameEnd = (view, opts) => recordGame(view, opts);
+    // Two ways to show a table: the 3D room, or the flat 2D table made for phones. Each game uses
+    // whichever is chosen when it starts (see #beginGame).
+    this.getTableView = getTableView;
+    this.presenter3d = new Presenter({ cards, avatars, hud, sound });
+    this.presenter2d = new Presenter2D({ hud, sound, world });
+    for (const p of [this.presenter3d, this.presenter2d]) p.onGameEnd = (view, opts) => recordGame(view, opts);
+    this.presenter2d.onQuit = () => this.session?.quit();
+    this.presenter2d.onEmote = (emote) => this.session?.emote(emote);
+    this.presenter = this.presenter3d;
     this.poseSync = new PoseSync(world);
     this.clientId = loadClientId();
     this.session = null; // { quit(), emote(text) } for whatever table we're at
@@ -153,10 +161,29 @@ export class App {
     }
   }
 
+  /** Match the screen to the chosen table: flat (2D) or the 3D room. Only between games. */
+  applyTableView() {
+    if (!this.hud.inGame) this.world.setFlat(this.getTableView() === '2d');
+  }
+
+  /** Lock in the table (2D or 3D) for the game about to start. */
+  #beginGame() {
+    this.applyTableView();
+    this.hud.inGame = true;
+    this.presenter = this.world.flat ? this.presenter2d : this.presenter3d;
+  }
+
+  /** Head/hand movement for the other players to see (not from the flat 2D table). */
+  #startPoses(send) {
+    if (!this.world.flat) this.poseSync.start(send);
+  }
+
   async #cleanup() {
     this.session = null;
     this.poseSync.stop();
     this.presenter.abort();
+    this.hud.inGame = false;
+    this.applyTableView();
     this.cards.clearSelectable();
     this.avatars.clear();
     this.hud.hideGameUi();
@@ -168,6 +195,7 @@ export class App {
     const settings = await this.hud.showSoloSetup(loadSettings());
     if (!settings) return;
     saveSettings(settings);
+    this.#beginGame();
     const host = new TableHost({ presenter: this.presenter, hostName: this.getName(), hostLook: this.getLook(), settings });
     host.autoplay = this.autoplay;
     this.presenter.reset('host');
@@ -192,7 +220,7 @@ export class App {
           host.updateSettings(settings);
           choice = 'rematch';
         } else {
-          this.presenter.endChoice = await this.hud.showSummary(this.presenter.view, { final: true });
+          this.presenter.endChoice = await this.presenter.askEndChoice();
           continue;
         }
       }
@@ -203,6 +231,7 @@ export class App {
 
   async #host() {
     const net = new PeerHost();
+    this.#beginGame();
     const host = new TableHost({ presenter: this.presenter, net, hostName: this.getName(), hostLook: this.getLook(), settings: loadSettings() });
     host.autoplay = this.autoplay;
     this.table = host;
@@ -226,7 +255,7 @@ export class App {
     saveSettings(host.settings);
     this.presenter.reset('host');
     this.session = { quit: () => host.abort(), emote: (e) => host.sendLocalEmote(e) };
-    this.poseSync.start((pose) => host.sendLocalPose(pose));
+    this.#startPoses((pose) => host.sendLocalPose(pose));
     try {
       await host.start();
       await this.#rematches(host, { save: true }); // same table, same guests
@@ -237,6 +266,7 @@ export class App {
   }
 
   async #join(initialCode) {
+    this.#beginGame();
     let code = initialCode;
     let lastCode = '';
     let error = null;
@@ -322,7 +352,7 @@ export class App {
       session.on('started', () => {
         if (inLobby) this.hud.finishPrompt('started');
         inLobby = false;
-        this.poseSync.start((pose) => session.sendPose(pose));
+        this.#startPoses((pose) => session.sendPose(pose));
       });
       session.on('rejected', (reason) => finish({ kind: 'rejected', reason }));
       session.on('closed', () => finish({ kind: 'closed' }));
