@@ -15,8 +15,8 @@
   z-index: 20;
   display: grid;
   grid-template-columns: 1fr;
-  grid-template-rows: auto auto 1fr auto auto;
-  grid-template-areas: 'top' 'players' 'trick' 'me' 'hand';
+  grid-template-rows: auto 1fr auto auto;
+  grid-template-areas: 'top' 'table' 'me' 'hand';
   gap: 6px;
   padding: calc(env(safe-area-inset-top) + 6px) calc(env(safe-area-inset-right) + 8px) calc(env(safe-area-inset-bottom) + 6px)
     calc(env(safe-area-inset-left) + 8px);
@@ -99,78 +99,98 @@
   flex: none;
 }
 
-/* Other players */
-.t2d-players {
-  grid-area: players;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 6px;
+/* The table: an oval with everyone seated round it (positions set by Presenter2D) */
+.t2d-table {
+  grid-area: table;
+  position: relative;
   min-height: 0;
 }
-.t2d-player {
-  position: relative;
-  flex: 1 1 30%;
-  max-width: 200px;
-  min-width: 100px;
+.t2d-oval {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at 50% 40%, #2a7a4f 0%, #1d5a3c 60%, #164a31 100%);
+  border: 6px solid #5b3a22;
+  box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.45), 0 4px 14px rgba(0, 0, 0, 0.5);
+  box-sizing: border-box;
+}
+.t2d-seat {
+  position: absolute;
+  transform: translate(-50%, -50%);
   background: var(--panel);
   border: 2px solid var(--edge);
-  border-radius: 12px;
-  padding: 5px 9px 6px;
+  border-radius: 10px;
+  padding: 3px 7px 4px;
   line-height: 1.15;
+  z-index: 3;
+  white-space: nowrap;
 }
-.t2d-player.turn {
+.t2d-seat.turn {
   border-color: var(--gold-bright);
-  box-shadow: 0 0 12px rgba(255, 226, 122, 0.55);
+  box-shadow: 0 0 12px rgba(255, 226, 122, 0.6);
+}
+.t2d-line {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
 }
 .t2d-name {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font: 700 14px Georgia, serif;
+  font: 700 13px Georgia, serif;
   color: var(--gold);
-  white-space: nowrap;
-  overflow: hidden;
-}
-.t2d-name span:first-child {
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
+}
+.t2d-count {
+  position: relative;
+  flex: none;
+  font-weight: 800;
+  font-size: 16px;
+}
+.t2d-count.muted {
+  color: var(--muted);
+}
+.t2d-count.bad {
+  color: var(--bad);
+  font-size: 12px;
+}
+.t2d-sub {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 .t2d-tag {
   flex: none;
   font: 800 9px system-ui, sans-serif;
   letter-spacing: 0.04em;
-  padding: 2px 5px;
-  border-radius: 5px;
+  padding: 1px 4px;
+  border-radius: 4px;
   background: #c0902e;
   color: #1a1206;
+}
+.t2d-tag[hidden] {
+  display: none;
 }
 .t2d-tag.soft {
   background: transparent;
   color: var(--muted);
   border: 1px solid rgba(166, 168, 194, 0.5);
 }
-.t2d-bid {
-  font-weight: 800;
-  font-size: 17px;
-  white-space: nowrap;
-}
-.t2d-bid.muted {
-  color: var(--muted);
-}
-.t2d-bid.bad {
-  color: var(--bad);
-}
 .t2d-score {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--muted);
 }
 .t2d-mini {
   position: absolute;
-  right: 6px;
-  bottom: 5px;
-  height: 46px;
+  left: 50%;
+  top: 100%;
+  transform: translate(-50%, 3px);
+  height: 40px;
   border-radius: 4px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+}
+.t2d-mini[hidden] {
+  display: none;
 }
 
 /* Speech bubbles: Thinking…, Wins the trick!, emotes */
@@ -190,63 +210,51 @@
   z-index: 2;
   pointer-events: none;
 }
-.t2d-player .t2d-bubble {
+.t2d-seat .t2d-bubble {
   bottom: auto;
   top: -4px;
-  transform: translate(-50%, -60%);
+  transform: translate(-50%, -85%);
 }
 .t2d-bubble[hidden] {
   display: none;
 }
 
-/* The trick in the middle */
-.t2d-trick {
-  grid-area: trick;
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 0;
-}
-.t2d-plays {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-items: flex-end;
-  gap: 8px;
-  max-height: 100%;
-}
-.t2d-play {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-}
-.t2d-play img {
-  height: var(--trick-card, 86px);
-  border-radius: 6px;
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45);
-}
-.t2d-play.win img {
-  box-shadow: 0 0 0 3px var(--gold-bright), 0 0 16px rgba(255, 226, 122, 0.8);
-}
-.t2d-play span {
-  font-size: 12px;
-  font-weight: 700;
-  max-width: 76px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+/* The turned-up trump card, small, in the top bar */
 .t2d-trumpcard img {
   display: block;
   height: 40px;
   border-radius: 4px;
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
 }
+
+/* Played cards: each one in front of the player who played it (positions set by Presenter2D) */
+.t2d-plays {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.t2d-play {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+}
+.t2d-play img {
+  display: block;
+  height: var(--trick-card, 80px);
+  border-radius: 6px;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45);
+}
+.t2d-play.win img {
+  box-shadow: 0 0 0 3px var(--gold-bright), 0 0 16px rgba(255, 226, 122, 0.8);
+}
 .t2d-empty {
-  color: rgba(244, 236, 214, 0.45);
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  color: rgba(244, 236, 214, 0.55);
   font-size: 14px;
+  font-weight: 700;
 }
 
 /* You */
@@ -265,11 +273,14 @@
   border-color: var(--gold-bright);
   box-shadow: 0 0 14px rgba(255, 226, 122, 0.6);
 }
-.t2d-me .t2d-bid {
+.t2d-me .t2d-name {
+  font-size: 16px;
+}
+.t2d-me .t2d-count {
   font-size: 20px;
 }
 .t2d-me .t2d-score {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
 }
 .t2d-hint {
@@ -488,37 +499,20 @@
   display: none;
 }
 
-/* Phones held sideways: compact player tiles in a row, your details beside your hand. */
+/* Phones held sideways: the table on top, your details beside your hand. */
 @media (orientation: landscape) and (max-height: 560px) {
   .t2d {
     grid-template-columns: auto 1fr;
-    grid-template-rows: auto auto 1fr auto;
-    grid-template-areas: 'top top' 'players players' 'trick trick' 'me hand';
+    grid-template-rows: auto 1fr auto;
+    grid-template-areas: 'top top' 'table table' 'me hand';
     gap: 4px;
-  }
-  .t2d-players {
-    flex-wrap: nowrap;
-  }
-  .t2d-player {
-    flex: 1 1 0;
-    min-width: 0;
-    padding: 3px 8px 4px;
-  }
-  .t2d-player .t2d-bid {
-    font-size: 15px;
-  }
-  .t2d-player .t2d-score {
-    font-size: 11px;
   }
   .t2d-me {
     flex-direction: column;
     align-items: flex-start;
     justify-content: center;
     gap: 2px;
-    min-width: 132px;
-  }
-  .t2d-me .t2d-bid {
-    font-size: 17px;
+    min-width: 120px;
   }
   .t2d-hint {
     text-align: left;

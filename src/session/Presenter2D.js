@@ -96,18 +96,25 @@ export class Presenter2D {
     this.emoteBtn.title = 'Emotes';
     top.append(this.roundEl, this.trumpEl, this.emoteBtn, button('Menu', () => this.#togglePop(this.menuPop)));
 
-    this.playersEl = el('section', 't2d-players');
-    const trick = el('section', 't2d-trick');
+    // The table: an oval, with everyone's name tag at their seat round its edge (the same seats as
+    // the 3D table, you at the bottom) and each played card landing in front of its player.
+    this.tableEl = el('section', 't2d-table');
+    this.ovalEl = el('div', 't2d-oval');
     this.playsEl = el('div', 't2d-plays');
-    trick.append(this.playsEl);
+    this.tableEl.append(this.ovalEl, this.playsEl);
 
+    // You: "You 0/1", your score and a hint, just above your hand.
     this.meEl = el('section', 't2d-me');
-    this.meBid = el('div', 't2d-bid');
+    const meLine = el('div', 't2d-line');
+    this.meCount = el('span', 't2d-count');
+    this.meDealer = el('span', 't2d-tag', 'D');
+    this.meDealer.title = 'Dealer';
+    meLine.append(el('span', 't2d-name', 'You'), this.meCount, this.meDealer);
     this.meScore = el('div', 't2d-score');
     this.hintEl = el('div', 't2d-hint');
     this.meBubble = el('div', 't2d-bubble');
     this.meBubble.hidden = true;
-    this.meEl.append(this.meBid, this.meScore, this.hintEl, this.meBubble);
+    this.meEl.append(meLine, this.meScore, this.hintEl, this.meBubble);
 
     this.handEl = el('section', 't2d-hand');
     this.sheet = el('div', 't2d-sheet');
@@ -138,14 +145,20 @@ export class Presenter2D {
       );
     }
 
-    root.append(top, this.playersEl, trick, this.meEl, this.handEl, this.sheet, this.menuPop, this.emotePop);
+    root.append(top, this.tableEl, this.meEl, this.handEl, this.sheet, this.menuPop, this.emotePop);
     // Tapping anywhere else closes pop-ups, and lowers a lifted card.
     root.addEventListener('pointerdown', (e) => {
       if (!e.target.closest('.t2d-pop, .t2d-top button')) this.#closePops();
       if (!e.target.closest('.t2d-card')) this.#lift(null);
     });
+    // Re-fit the oval whenever its space changes (shown, rotated, resized).
+    new ResizeObserver(() => this.view && this.#layoutTable()).observe(this.tableEl);
     window.addEventListener('keydown', (e) => this.#onKey(e));
-    window.addEventListener('resize', () => this.view && this.#renderHand());
+    window.addEventListener('resize', () => {
+      if (!this.view) return;
+      this.#layoutTable();
+      this.#renderHand();
+    });
     document.body.append(root);
   }
 
@@ -266,10 +279,9 @@ export class Presenter2D {
       if (!t) continue;
       t.root.classList.toggle('turn', active && view.turn === seat);
       t.dealer.hidden = view.dealer !== seat;
-      t.kind.hidden = !this.multiplayer;
-      t.kind.textContent = p.isBot ? 'BOT' : 'PLAYER';
-      this.#bidLine(t.bid, p, shown[seat], p.connected === false, before?.[seat]);
-      t.score.textContent = `Score ${p.score}`;
+      t.kind.hidden = !this.multiplayer || !p.isBot;
+      this.#count(t.count, p, shown[seat], p.connected === false, before?.[seat]);
+      t.score.textContent = String(p.score);
       // Forehead round: everyone else's card is on show.
       const card = view.isForeheadRound ? p.hand[0] : null;
       t.mini.hidden = !card;
@@ -279,35 +291,29 @@ export class Presenter2D {
     }
     const me = view.players[0];
     this.meEl.classList.toggle('turn', !!this.yourTurn);
-    this.#bidLine(this.meBid, { ...me, bid: me.bid }, shown[0], false, before?.[0], hideBids && me.bid !== null);
-    this.meScore.textContent = `Score ${me.score}`;
+    this.meDealer.hidden = view.dealer !== 0;
+    this.#count(this.meCount, me, shown[0], false, before?.[0]);
+    this.meScore.textContent = hideBids && me.bid !== null ? `Score ${me.score} · bid hidden from others` : `Score ${me.score}`;
   }
 
-  /** "Bid 1 · Won 0", with the Won number popping (and a +1) when it goes up. */
-  #bidLine(target, p, tricks, disconnected, before, hiddenFromOthers = false) {
-    target.className = 't2d-bid';
+  /**
+   * Tricks won / tricks bid, e.g. "0/1" ("0/–" before bidding, "0/?" while bids are hidden). The won
+   * number pops (with a +1) when it goes up.
+   */
+  #count(target, p, tricks, disconnected, before) {
+    target.className = 't2d-count';
     target.replaceChildren();
     if (disconnected) {
-      target.textContent = 'Reconnecting…';
+      target.textContent = 'away';
       target.classList.add('bad');
       return;
     }
-    if (p.bid === null) {
-      target.textContent = 'No bid yet';
-      target.classList.add('muted');
-      return;
-    }
-    if (p.bid === '?') {
-      target.textContent = 'Bid hidden';
-      return;
-    }
     const won = el('span', 't2d-won', String(tricks));
-    target.append(`Bid ${p.bid} · Won `, won);
-    if (hiddenFromOthers) target.append(el('span', 't2d-score', ' (hidden)'));
+    target.append(won, `/${p.bid === null ? '–' : p.bid}`);
+    if (p.bid === null) target.classList.add('muted');
     if (before !== undefined && tricks > before) {
       won.classList.add('pop');
       const plus = el('span', 't2d-plus', '+1');
-      target.style.position = 'relative';
       target.append(plus);
       setTimeout(() => plus.remove(), 1200);
     }
@@ -315,27 +321,79 @@ export class Presenter2D {
 
   // ───────────────────────── players and bubbles ─────────────────────────
 
+  /** A name tag per other player, seated round the oval: "Merlin 0/1", score underneath. */
   #setupPlayers() {
     const view = this.view;
-    this.playersEl.replaceChildren();
+    for (const t of this.tiles) t?.root.remove();
     this.tiles = [];
     for (let seat = 1; seat < view.numPlayers; seat++) {
-      const root = el('div', 't2d-player');
-      const name = el('div', 't2d-name');
-      const dealer = el('span', 't2d-tag', 'DEALER');
-      const kind = el('span', 't2d-tag soft');
-      name.append(el('span', '', view.players[seat].name), dealer, kind);
-      const bid = el('div', 't2d-bid');
-      const score = el('div', 't2d-score');
+      const root = el('div', 't2d-seat');
+      const line = el('div', 't2d-line');
+      const count = el('span', 't2d-count');
+      line.append(el('span', 't2d-name', view.players[seat].name), count);
+      const sub = el('div', 't2d-sub');
+      const dealer = el('span', 't2d-tag', 'D');
+      dealer.title = 'Dealer';
+      const kind = el('span', 't2d-tag soft', 'BOT');
+      const score = el('span', 't2d-score');
+      sub.append(score, dealer, kind);
       const mini = el('img', 't2d-mini');
       mini.hidden = true;
       const bubble = el('div', 't2d-bubble');
       bubble.hidden = true;
-      root.append(name, bid, score, mini, bubble);
-      this.playersEl.append(root);
-      this.tiles[seat] = { root, dealer, kind, bid, score, mini, bubble, thinking: false, won: false, emote: null, until: 0 };
+      root.append(line, sub, mini, bubble);
+      this.tableEl.append(root);
+      this.tiles[seat] = { root, dealer, kind, count, score, mini, bubble, thinking: false, won: false, emote: null, until: 0 };
     }
     this.meTile = { root: this.meEl, bubble: this.meBubble, thinking: false, won: false, emote: null, until: 0 };
+    this.#layoutTable();
+  }
+
+  /**
+   * Fit the oval to the space it has, then put each name tag on its seat at the oval's edge and
+   * each played card halfway in from it (see #seatPoint).
+   */
+  #layoutTable() {
+    const view = this.view;
+    if (!view) return;
+    const box = this.tableEl.getBoundingClientRect();
+    const tagW = Math.min(124, box.width * 0.3);
+    const rx = Math.max(60, box.width / 2 - tagW / 2 - 2);
+    const ry = Math.max(50, box.height / 2 - 26);
+    this.geom = { cx: box.width / 2, cy: box.height / 2 + 4, rx, ry };
+    const oval = this.ovalEl.style;
+    oval.left = `${this.geom.cx - rx}px`;
+    oval.top = `${this.geom.cy - ry}px`;
+    oval.width = `${rx * 2}px`;
+    oval.height = `${ry * 2}px`;
+    // Trick cards: as big as fits between neighbouring seats.
+    const card = Math.max(46, Math.min(96, ry * (box.width > box.height * 1.6 ? 0.8 : 0.62), rx * (view.numPlayers > 4 ? 0.6 : 0.8)));
+    this.tableEl.style.setProperty('--trick-card', `${card}px`);
+    for (let seat = 1; seat < view.numPlayers; seat++) {
+      const t = this.tiles[seat];
+      if (!t) continue;
+      const { x, y } = this.#seatPoint(seat, 1);
+      t.root.style.left = `${x}px`;
+      t.root.style.top = `${y}px`;
+      t.root.style.maxWidth = `${tagW}px`;
+    }
+    for (const play of this.playsEl.querySelectorAll('.t2d-play')) this.#placePlay(play);
+  }
+
+  /**
+   * A point toward `seat`: `r` = 1 is the oval's edge, 0 its centre. Everyone sits evenly round the
+   * oval in play order, you at the bottom and the next player on your left (as at the 3D table).
+   */
+  #seatPoint(seat, r) {
+    const { cx, cy, rx, ry } = this.geom;
+    const a = (-2 * Math.PI * seat) / this.view.numPlayers;
+    return { x: cx + Math.sin(a) * rx * r, y: cy + Math.cos(a) * ry * r };
+  }
+
+  #placePlay(play) {
+    const { x, y } = this.#seatPoint(Number(play.dataset.player), 0.5);
+    play.style.left = `${x}px`;
+    play.style.top = `${y}px`;
   }
 
   /** Show a speech bubble on a player (seat 0 = you) for a while. */
@@ -384,25 +442,15 @@ export class Presenter2D {
       return;
     }
     for (const { player, card } of plays) this.playsEl.append(this.#playEl(player, card));
-    this.#sizeTrick();
   }
 
+  /** A played card, in front of the player who played it. */
   #playEl(player, card) {
     const box = el('div', 't2d-play');
     box.dataset.player = player;
-    box.append(cardImg(card), el('span', '', this.#name(player)));
+    box.append(cardImg(card));
+    if (this.geom) this.#placePlay(box);
     return box;
-  }
-
-  /** Trick cards shrink to fit in one or two rows. */
-  #sizeTrick() {
-    const area = this.playsEl.parentElement.getBoundingClientRect();
-    const n = this.playsEl.children.length || 1;
-    const rows = n > 3 && area.width < 420 ? 2 : 1;
-    const perRow = Math.ceil(n / rows);
-    const byWidth = ((area.width - 16 - perRow * 8) / perRow) * 1.5;
-    const byHeight = (area.height - rows * 22) / rows - 6;
-    this.playsEl.style.setProperty('--trick-card', `${Math.max(48, Math.min(110, byWidth, byHeight))}px`);
   }
 
   /** Your hand, sorted like the 3D table, sized and overlapped to fit the screen. */
@@ -417,7 +465,7 @@ export class Presenter2D {
 
     const width = this.handEl.getBoundingClientRect().width || window.innerWidth - 16;
     const landscape = window.innerWidth > window.innerHeight;
-    const maxH = landscape ? Math.min(120, window.innerHeight * 0.32) : Math.min(156, window.innerHeight * 0.24);
+    const maxH = landscape ? Math.min(110, window.innerHeight * 0.27) : Math.min(156, window.innerHeight * 0.24);
     const rows = !landscape && order.length > 8 ? 2 : 1;
     const perRow = Math.ceil(order.length / rows);
     const cardW = Math.min(maxH / 1.5, width / Math.min(perRow, 5.5));
@@ -686,7 +734,6 @@ export class Presenter2D {
         if (event.order === 0) this.playsEl.replaceChildren();
         const box = this.#playEl(event.seat, event.card);
         this.playsEl.append(box);
-        this.#sizeTrick();
         this.#flyIn(box, event.seat);
         this.sound?.play('play', null, { volume: 0.7, rate: 0.9 + Math.random() * 0.2 });
         if (event.card.kind === 'wizard') this.sound?.play('wizard');
