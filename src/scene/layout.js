@@ -134,15 +134,34 @@ export function trickPose(seat, n, order, card) {
   return pose(position, orientation(-Math.PI / 2 + tilt, yaw, 0));
 }
 
-export function deckPose(k) {
-  const position = TABLE_CENTER.clone().add(new THREE.Vector3(-0.075, 0.001 + k * 0.0004, 0));
-  return pose(position, orientation(-Math.PI / 2, 0, 0), false);
+/**
+ * Where the deck and the turned-up trump sit, so the deck travels round the table as the deal
+ * passes. Both stay clear of the middle, where tricks are played: in front of another dealer near
+ * the table's edge (deck on their left, trump on their right, either side of their won-tricks
+ * pile); when you deal, a little in from your edge and to your right, so your hand doesn't hide
+ * them. `dealer` null = the middle (between games).
+ */
+const SPOTS = {
+  them: { radius: 0.6, deck: -0.12, trump: 0.12 },
+  you: { radius: 0.42, deck: 0.17, trump: 0.29 },
+};
+function dealerSpot(dealer, n, which, lift) {
+  if (dealer === null) return TABLE_CENTER.clone().add(new THREE.Vector3(which === 'deck' ? -0.075 : 0.075, lift, 0));
+  const spot = SPOTS[dealer === 0 ? 'you' : 'them'];
+  const a = seatAngle(dealer, n);
+  const tangent = new THREE.Vector3(Math.cos(a), 0, -Math.sin(a)); // the dealer's right
+  return tableSpot(seatDirection(dealer, n), spot.radius, lift).addScaledVector(tangent, spot[which]);
 }
 
-export function trumpPose() {
+export function deckPose(k, dealer = null, n = 0) {
+  const yaw = dealer === null ? 0 : seatAngle(dealer, n);
+  return pose(dealerSpot(dealer, n, 'deck', 0.001 + k * 0.0004), orientation(-Math.PI / 2, yaw, 0), false);
+}
+
+/** The trump stays turned toward you so it's always readable. */
+export function trumpPose(dealer = null, n = 0) {
   const tilt = 0.15;
-  const position = TABLE_CENTER.clone().add(new THREE.Vector3(0.075, 0.004 + (CARD_H / 2) * Math.sin(tilt), 0));
-  return pose(position, orientation(-Math.PI / 2 + tilt, 0, 0));
+  return pose(dealerSpot(dealer, n, 'trump', 0.004 + (CARD_H / 2) * Math.sin(tilt)), orientation(-Math.PI / 2 + tilt, 0, 0));
 }
 
 export function wonPilePose(seat, n, i) {

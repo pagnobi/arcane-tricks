@@ -168,6 +168,7 @@ export class CardTable {
     this.hands = [];
     this.trick = []; // [{ obj, player }]
     this.trumpObj = null;
+    this.deckAt = { dealer: null, n: 0 }; // where the deck is: in front of the dealer (see deckPose)
     for (let i = 0; i < DECK_SIZE; i++) {
       const obj = new CardObject();
       world.scene.add(obj);
@@ -243,7 +244,11 @@ export class CardTable {
     return order;
   }
 
-  /** Stack every card face down in the deck, ready to deal. */
+  #deckPose(k) {
+    return deckPose(k, this.deckAt.dealer, this.deckAt.n);
+  }
+
+  /** Stack every card face down in the deck (wherever it is now), ready to deal. */
   prepareRound() {
     this.selectable.clear();
     this.hands = [];
@@ -251,12 +256,22 @@ export class CardTable {
     this.trumpObj = null;
     this.objects.forEach((o, k) => {
       this.#reset(o);
-      this.#place(o, deckPose(k));
+      this.#place(o, this.#deckPose(k));
     });
   }
 
+  /** Slide the whole deck to sit in front of `dealer` (no-op if it's already there). */
+  async moveDeck(dealer, n, duration = 0.5) {
+    if (this.deckAt.dealer === dealer && this.deckAt.n === n) return;
+    this.deckAt = { dealer, n };
+    const stacked = this.objects.filter((o) => !o.card && !this.hands.some((h) => h.includes(o)));
+    if (stacked.length) this.sound?.play('sweep', this.#deckPose(0).position, { volume: 0.5 });
+    await Promise.all(stacked.map((o) => this.#move(o, this.#deckPose(this.objects.indexOf(o)), duration, 0, 0.03)));
+  }
+
   async deal(view, speed = 1) {
-    const deckSpot = deckPose(0).position;
+    await this.moveDeck(view.dealer, view.numPlayers, 0.5 * speed); // first round, or after a rejoin
+    const deckSpot = this.#deckPose(0).position;
     this.hands = view.players.map(() => []);
     const order = this.#dealOrder(view);
     // Deal from the top of the stack.
@@ -282,8 +297,9 @@ export class CardTable {
     if (!view.trumpCard || !this.trumpObj) return;
     const o = this.trumpObj;
     o.setFace(view.trumpCard);
-    this.sound?.play('flip', trumpPose().position);
-    await this.#move(o, trumpPose(), 0.5, 0, 0.08);
+    const spot = trumpPose(view.dealer, view.numPlayers);
+    this.sound?.play('flip', spot.position);
+    await this.#move(o, spot, 0.5, 0, 0.08);
     this.#setInspectable(o, true);
   }
 
@@ -358,15 +374,20 @@ export class CardTable {
     this.selectable.clear();
   }
 
-  /** Sweep every visible card back to the deck. */
-  async gatherAll() {
+  /**
+   * Sweep every card back into the deck, in front of the next dealer (`nextDealer` null: the
+   * middle of the table, between games). The stack slides along with them.
+   */
+  async gatherAll(nextDealer = null, n = 0) {
+    this.deckAt = { dealer: nextDealer, n };
     const visible = this.objects.filter((o) => o.visible && (o.card || this.hands.some((h) => h.includes(o))));
-    if (visible.length) this.sound?.play('sweep', deckPose(0).position);
+    if (visible.length) this.sound?.play('sweep', this.#deckPose(0).position);
     await Promise.all(
-      visible.map((o, k) => {
+      this.objects.map((o, k) => {
         o.setGlow(false);
         this.#setInspectable(o, false);
-        return this.#move(o, deckPose(k), 0.35, Math.min(k, 20) * 0.01);
+        const moving = visible.includes(o);
+        return this.#move(o, this.#deckPose(k), moving ? 0.45 : 0.4, moving ? Math.min(k, 20) * 0.01 : 0, moving ? 0 : 0.02);
       }),
     );
     this.prepareRound();
@@ -374,6 +395,7 @@ export class CardTable {
 
   /** Rejoin: put everything where the view says, instantly. */
   restore(view) {
+    this.deckAt = { dealer: view.dealer >= 0 ? view.dealer : null, n: view.numPlayers };
     this.prepareRound();
     if (view.phase === 'ready' || view.phase === 'gameOver') return;
     let next = this.objects.length - 1;
@@ -394,7 +416,7 @@ export class CardTable {
     if (view.trumpCard) {
       this.trumpObj = take();
       this.trumpObj.setFace(view.trumpCard);
-      this.#place(this.trumpObj, trumpPose());
+      this.#place(this.trumpObj, trumpPose(view.dealer, view.numPlayers));
       this.#setInspectable(this.trumpObj, true);
     }
     view.trick.forEach(({ player, card }, order) => {
