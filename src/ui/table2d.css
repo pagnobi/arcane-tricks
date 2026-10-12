@@ -295,6 +295,57 @@
   transform: none;
 }
 
+/* Bidding happens in your bar, so the table (and everyone's bids) stays in view */
+.t2d-bidbar {
+  display: none;
+}
+.t2d-me.bidding > :not(.t2d-bidbar, .t2d-bubble) {
+  display: none;
+}
+.t2d-me.bidding .t2d-bidbar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 100%;
+}
+.t2d-bidrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.t2d-bidrow button {
+  min-width: 42px;
+  min-height: 42px;
+  padding: 4px 8px;
+  font-size: 19px;
+  font-weight: 800;
+}
+.t2d-bidlabel {
+  font: 700 17px Georgia, serif;
+  color: var(--gold);
+  margin-right: 2px;
+}
+.t2d-called {
+  font-weight: 800;
+  font-size: 15px;
+  margin-left: 4px;
+  white-space: nowrap;
+}
+.t2d-called.muted {
+  color: var(--muted);
+}
+.t2d-bidnote {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--gold);
+}
+.t2d-bidnote.warn {
+  color: var(--bad);
+}
+
 /* Your hand */
 .t2d-hand {
   grid-area: hand;
@@ -518,6 +569,27 @@
     text-align: left;
     flex: none;
     font-size: 12px;
+  }
+  .t2d-me.bidding .t2d-line {
+    display: flex;
+  }
+  .t2d-me.bidding .t2d-score,
+  .t2d-me.bidding .t2d-hint {
+    display: block;
+  }
+  .t2d-me.bidding .t2d-bidbar {
+    position: absolute;
+    /* centred on the screen, over the empty bottom of the table */
+    left: calc(50vw - 8px - env(safe-area-inset-left));
+    transform: translateX(-50%);
+    bottom: calc(100% + 6px);
+    width: max-content;
+    max-width: calc(100vw - 32px);
+    background: rgba(15, 17, 36, 0.97);
+    border: 2px solid var(--gold);
+    border-radius: 12px;
+    padding: 6px 10px;
+    z-index: 8;
   }
   .t2d-hand {
     padding-top: 14px;

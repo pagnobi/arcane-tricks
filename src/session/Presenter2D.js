@@ -114,7 +114,9 @@ export class Presenter2D {
     this.hintEl = el('div', 't2d-hint');
     this.meBubble = el('div', 't2d-bubble');
     this.meBubble.hidden = true;
-    this.meEl.append(meLine, this.meScore, this.hintEl, this.meBubble);
+    // While you bid, your bar turns into the bid buttons, so nothing on the table is covered.
+    this.bidBar = el('div', 't2d-bidbar');
+    this.meEl.append(meLine, this.meScore, this.hintEl, this.meBubble, this.bidBar);
 
     this.handEl = el('section', 't2d-hand');
     this.sheet = el('div', 't2d-sheet');
@@ -883,33 +885,39 @@ export class Presenter2D {
     const others = view.players.filter((p) => p.index !== 0 && p.bid !== null);
     const hidden = others.some((p) => p.bid === '?');
     const called = others.reduce((sum, p) => sum + (typeof p.bid === 'number' ? p.bid : 0), 0);
-    let calledText = `${called}/${max} tricks called so far`;
-    if (hidden) calledText = 'Bids are hidden until everyone has bid';
-    else if (!others.length) calledText = `0/${max} tricks called · you bid first`;
+    let calledText = `${called}/${max} called`;
+    if (hidden) calledText = 'bids hidden';
+    else if (!others.length) calledText = 'you bid first';
     else if (called > max) calledText += ` (${called - max} over)`;
-    if (view.isForeheadRound) calledText += ' · your card is on your forehead';
 
     return new Promise((resolve, reject) => {
+      const close = () => {
+        this.meEl.classList.remove('bidding');
+        this.bidBar.replaceChildren();
+        this.sheetKeys = null;
+      };
       const done = (bid) => {
         this.pending = null;
-        this.#closeSheet();
+        close();
         resolve(bid);
       };
-      this.#openSheet((s) => {
-        s.append(el('h2', '', 'Your bid'), el('p', hidden ? 'note' : '', calledText));
-        if (forbidden.length) s.append(el('p', 'warn', `Dealer rule: you can’t bid ${forbidden.join(', ')}`));
-        const row = el('div', 't2d-buttons numbers');
-        for (let b = 0; b <= max; b++) {
-          const btn = button(String(b), () => done(b));
-          btn.disabled = !allowed.has(b);
-          row.append(btn);
-        }
-        s.append(row);
-      }, { over: 'trick' });
+      // In your bar: "Bid [0] [1] [2]  1/2 called", plus any dealer-rule or forehead note.
+      const row = el('div', 't2d-bidrow');
+      row.append(el('span', 't2d-bidlabel', 'Bid'));
+      for (let b = 0; b <= max; b++) {
+        const btn = button(String(b), () => done(b));
+        btn.disabled = !allowed.has(b);
+        row.append(btn);
+      }
+      row.append(el('span', hidden ? 't2d-called muted' : 't2d-called', calledText));
+      this.bidBar.replaceChildren(row);
+      if (forbidden.length) this.bidBar.append(el('div', 't2d-bidnote warn', `Dealer rule: you can’t bid ${forbidden.join(', ')}`));
+      if (view.isForeheadRound) this.bidBar.append(el('div', 't2d-bidnote', 'Your card is on your forehead: bid by reading the others'));
+      this.meEl.classList.add('bidding');
       this.sheetKeys = (e) => {
         if (max < 10 && /^[0-9]$/.test(e.key) && allowed.has(Number(e.key))) done(Number(e.key));
       };
-      this.pending = { reject, close: () => this.#closeSheet() };
+      this.pending = { reject, close };
     });
   }
 
