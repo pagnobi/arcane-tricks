@@ -336,21 +336,53 @@ export class App {
         },
         emote: (e) => session.sendEmote(e),
       };
-      session.on('lobby', (lobby) => {
-        if (inLobby) return this.hud.updateLobby(lobby);
+      let lastLobby = null;
+      let editing = false; // changing name or wizard from the lobby
+      const openLobby = () => {
         inLobby = true;
-        this.hud.openGuestLobby(lobby).then(
+        this.hud.openGuestLobby(lastLobby).then(
           (value) => {
             inLobby = false;
             if (value === 'leave') this.session.quit();
+            if (value === 'name' || value === 'wizard') editProfile(value);
           },
           () => {
             inLobby = false;
           },
         );
+      };
+      const editProfile = async (what) => {
+        editing = true;
+        try {
+          if (what === 'name') {
+            const name = await this.hud.askName({ initial: this.getName(), randomName });
+            if (name) {
+              this.setName(name);
+              session.updateProfile({ name });
+            }
+          } else {
+            const look = await this.hud.askLook({ initial: this.getLook(), name: this.getName() });
+            if (look) {
+              this.setLook(look);
+              session.updateProfile({ look });
+            }
+          }
+        } catch {
+          return; // the game started (or the table closed) while editing
+        } finally {
+          editing = false;
+        }
+        if (!session.closed && !session.started) openLobby();
+      };
+      session.on('lobby', (lobby) => {
+        lastLobby = lobby;
+        if (inLobby) return this.hud.updateLobby(lobby);
+        if (!editing) openLobby();
       });
       session.on('started', () => {
+        session.started = true;
         if (inLobby) this.hud.finishPrompt('started');
+        if (editing) this.hud.cancelPrompts(new Error('started')); // close the editor: cards are being dealt
         inLobby = false;
         this.#startPoses((pose) => session.sendPose(pose));
       });

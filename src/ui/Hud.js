@@ -952,12 +952,17 @@ export class Hud {
     });
   }
 
-  /** A guest waiting for the host. Resolves 'leave', or whatever finishPrompt() passes. */
+  /** A guest waiting for the host. Resolves 'leave' | 'name' | 'wizard', or whatever finishPrompt() passes. */
   openGuestLobby(lobby) {
     this.lobby = lobby;
     this.lobbySettings = null;
     return this.#prompt((done) => {
-      this.#openModal({ width: 0.66, height: 0.56, draw: (ctx, p) => drawGuestLobby(ctx, p, { lobby: this.lobby, onLeave: () => done('leave') }) });
+      this.#openModal({
+        width: 0.7,
+        height: 0.56,
+        draw: (ctx, p) =>
+          drawGuestLobby(ctx, p, { lobby: this.lobby, onLeave: () => done('leave'), onRename: () => done('name'), onWizard: () => done('wizard') }),
+      });
     });
   }
 

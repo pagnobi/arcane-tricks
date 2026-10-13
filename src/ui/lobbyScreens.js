@@ -344,7 +344,7 @@ export function drawNameEditor(ctx, p, { name, max, shift, onKey, onShift, onSpa
   p.button('save', { x: W - 44 - 260, y: ay, w: 260, h: 58 }, 'Save', { primary: true, size: 26, disabled: !name.trim(), onClick: onSave });
 }
 
-export function drawGuestLobby(ctx, p, { lobby, onLeave }) {
+export function drawGuestLobby(ctx, p, { lobby, onLeave, onRename, onWizard }) {
   const W = p.pxWidth;
   const H = p.pxHeight;
   drawPanelBackground(ctx, W, H);
@@ -356,7 +356,11 @@ export function drawGuestLobby(ctx, p, { lobby, onLeave }) {
     font: `19px ${FONTS.sans}`,
     fill: THEME.muted,
   });
-  p.button('leave', { x: W / 2 - 110, y: H - 84, w: 220, h: 58 }, 'Leave table', { size: 24, onClick: onLeave });
+  // While waiting you can still change how you appear to the table.
+  const bw = (W - 100) / 3;
+  p.button('rename', { x: 50, y: H - 84, w: bw, h: 58 }, 'Change name', { size: 22, onClick: onRename });
+  p.button('wizard', { x: 50 + bw + 10, y: H - 84, w: bw, h: 58 }, 'Your wizard', { size: 22, onClick: onWizard });
+  p.button('leave', { x: 50 + 2 * (bw + 10), y: H - 84, w: bw, h: 58 }, 'Leave table', { size: 22, onClick: onLeave });
 }
 
 const MESSAGE_FONT = `23px ${FONTS.sans}`;

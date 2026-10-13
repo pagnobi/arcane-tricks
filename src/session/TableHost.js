@@ -105,6 +105,9 @@ export class TableHost extends Emitter {
       case 'emote':
         this.#relayEmote(seat, msg.emote);
         break;
+      case 'profile':
+        this.#onProfile(seat, msg);
+        break;
       case 'leave':
         s.leftOnPurpose = true;
         this.net.disconnect(connId);
@@ -147,9 +150,22 @@ export class TableHost extends Emitter {
     this.#lobbyChanged();
   }
 
+  /**
+   * A guest changed their name or wizard in the lobby. Checked like a new arrival's, and only
+   * before the game starts (names and looks are fixed once cards are dealt).
+   */
+  #onProfile(seat, msg) {
+    if (this.started) return;
+    const s = this.seats[seat];
+    const name = sanitizeName(msg.name);
+    if (name && name !== s.name) s.name = this.#uniqueName(name, s);
+    if (msg.look) s.look = sanitizeLook(msg.look);
+    this.#lobbyChanged();
+  }
+
   /** Two players with the same name get numbered: "Amber Owl", "Amber Owl 2". */
-  #uniqueName(name) {
-    const taken = new Set(this.seats.map((s) => s.name));
+  #uniqueName(name, self = null) {
+    const taken = new Set(this.seats.filter((s) => s !== self).map((s) => s.name));
     if (!taken.has(name)) return name;
     for (let k = 2; ; k++) {
       const candidate = `${name.slice(0, NAME_MAX - 2).trim()} ${k}`;

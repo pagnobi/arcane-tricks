@@ -161,6 +161,13 @@ export class ClientSession extends Emitter {
     this.net?.send({ type: 'emote', emote });
   }
 
+  /** Change your name and/or wizard while waiting in the lobby (the host re-checks both). */
+  updateProfile({ name = this.name, look = this.look } = {}) {
+    this.name = name;
+    this.look = look;
+    this.net?.send({ type: 'profile', name, look });
+  }
+
   leave() {
     this.closed = true;
     this.net?.send({ type: 'leave' });

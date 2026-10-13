@@ -432,4 +432,28 @@ describe('online table (loopback network)', () => {
     expect(lobbies).toEqual([]); // guests aren't sent back to a lobby screen between games
     assertNoLeaks(clients[0].presenter.events);
   });
+
+  it('guests can change their name and wizard in the lobby, but not once the game starts', async () => {
+    const { host, clients } = await makeTable({ remotes: 2, settings: { numPlayers: 3, shortGame: true } });
+    const lobbies = [];
+    clients[1].session.on('lobby', (l) => lobbies.push(l));
+    clients[0].session.updateProfile({ name: '  Star  Wizard ', look: { skin: 'morgana', hat: 'teal' } });
+    await settle();
+    expect(host.seats[1].name).toBe('Star Wizard');
+    expect(host.seats[1].look).toEqual(sanitizeLook({ skin: 'morgana', hat: 'teal' }));
+    expect(lobbies.at(-1).seats[1].name).toBe('Star Wizard'); // everyone in the lobby sees it
+    clients[1].session.updateProfile({ name: 'Star Wizard' }); // taken: numbered
+    await settle();
+    expect(host.seats[2].name).toBe('Star Wizard 2');
+    clients[0].session.updateProfile({ name: 'Star Wizard' }); // keeping your own name isn't a clash
+    await settle();
+    expect(host.seats[1].name).toBe('Star Wizard');
+
+    const game = host.start();
+    await settle();
+    clients[0].session.updateProfile({ name: 'Too Late' });
+    await settle();
+    expect(host.seats[1].name).toBe('Star Wizard');
+    await game;
+  });
 });
